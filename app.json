@@ -32,6 +32,8 @@
     },
     "plugins": [
       "expo-router",
+      "./plugins/withShortAndroidCxxPaths",
+      "./plugins/withAndroidLocalProperties",
       [
         "expo-splash-screen",
         {

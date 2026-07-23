@@ -7,7 +7,7 @@ This is an [Expo](https://expo.dev) project created with [`create-expo-app`](htt
 1. Install dependencies
 
    ```bash
-   npm install
+   npm ci
    ```
 
 2. Start the app
@@ -24,6 +24,25 @@ In the output, you'll find options to open the app in a
 - [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
 
 You can start developing by editing the files inside the **src/app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+
+### Build Android locally
+
+Use the repository scripts so the native path guard is applied before each
+Android build:
+
+```bash
+# Debug
+npm run android
+
+# Release
+npm run android:release
+```
+
+The generated Android project centralizes CMake/Ninja staging files in short,
+per-project directories under the Gradle user cache. This prevents native
+Prefab paths from crossing Windows' legacy 260-character limit, without
+requiring every contributor to change system registry policy or clone to a
+specific directory.
 
 ### Other setup steps
 

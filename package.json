@@ -36,7 +36,11 @@
   },
   "scripts": {
     "start": "expo start",
+    "android:configure": "node scripts/apply-short-android-cxx-paths.js",
+    "preandroid": "npm run android:configure",
     "android": "expo run:android",
+    "preandroid:release": "npm run android:configure",
+    "android:release": "expo run:android --variant release",
     "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "expo lint"
