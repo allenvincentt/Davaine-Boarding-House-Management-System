@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="1024"
+  height="1024"
+  viewBox="0 0 1024 1024"
+  role="img"
+  aria-labelledby="davaine-logo-title davaine-logo-description"
+  shape-rendering="geometricPrecision">
+  <title id="davaine-logo-title">Davaine logo</title>
+  <desc id="davaine-logo-description">
+    A matcha-green letter D shaped like a boarding house, with two windows and a closed door.
+  </desc>
+
+  <rect width="1024" height="1024" fill="#F9F7F0"/>
+
+  <!--
+    The outer mark uses a straight baseline and a mathematically smooth half-ellipse
+    so the lower border remains level and joins the rounded bowl cleanly.
+  -->
+  <path
+    fill="#8A9900"
+    d="
+      M394 373
+      H487
+      C578.68 373 653 435.68 653 513
+      C653 590.32 578.68 653 487 653
+      H394
+      Q371 653 371 630
+      V396
+      Q371 373 394 373
+      Z
+    "/>
+
+  <!-- Window and door cutouts share the same left and right alignment. -->
+  <g fill="#F9F7F0">
+    <rect x="467" y="442" width="31" height="37"/>
+    <rect x="512" y="442" width="31" height="37"/>
+    <rect x="467" y="522" width="76" height="98"/>
+  </g>
+
+  <circle cx="484" cy="573" r="8.5" fill="#8A9900"/>
+</svg>

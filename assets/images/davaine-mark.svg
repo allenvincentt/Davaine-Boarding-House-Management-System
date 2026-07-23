@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="282"
+  height="280"
+  viewBox="0 0 282 280"
+  role="img"
+  aria-labelledby="davaine-mark-title"
+  shape-rendering="geometricPrecision">
+  <title id="davaine-mark-title">Davaine</title>
+
+  <path
+    fill="#8A9900"
+    d="
+      M23 0
+      H116
+      C207.68 0 282 62.68 282 140
+      C282 217.32 207.68 280 116 280
+      H23
+      Q0 280 0 257
+      V23
+      Q0 0 23 0
+      Z
+    "/>
+
+  <g fill="#F9F7F0">
+    <rect x="96" y="69" width="31" height="37"/>
+    <rect x="141" y="69" width="31" height="37"/>
+    <rect x="96" y="149" width="76" height="98"/>
+  </g>
+
+  <circle cx="113" cy="200" r="8.5" fill="#8A9900"/>
+</svg>

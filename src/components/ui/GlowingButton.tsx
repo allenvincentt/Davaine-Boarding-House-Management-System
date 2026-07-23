@@ -122,6 +122,8 @@ export function GlowingButton({ label, onPress, style, textStyle }: GlowingButto
           <Animated.Text
             accessible={false}
             numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.8}
             maxFontSizeMultiplier={1.2}
             style={[
               styles.label,

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Image } from 'expo-image';
 import {
   Animated,
   Easing,
@@ -131,7 +132,7 @@ export function NavBar({ activeSection, onNavigate, scrollY }: NavBarProps) {
           ]}>
           <View style={styles.mobileTopBrand}>
             <View style={styles.mobileTopMark}>
-              <Text style={styles.mobileTopMarkText}>{'\u25A6'}</Text>
+              <DavaineMark size={36} />
             </View>
             <Text style={styles.mobileTopName}>Davaine</Text>
           </View>
@@ -165,7 +166,7 @@ export function NavBar({ activeSection, onNavigate, scrollY }: NavBarProps) {
             style={styles.hiddenMobileBrand}
             onPress={() => navigate('home')}>
             <View style={styles.mobileBrandMark}>
-              <Text style={styles.mobileBrandMarkText}>{'\u25A6'}</Text>
+              <DavaineMark size={38} />
             </View>
           </Pressable>
           <View style={styles.mobileLinks}>
@@ -188,9 +189,13 @@ export function NavBar({ activeSection, onNavigate, scrollY }: NavBarProps) {
   return (
     <View style={[styles.shell, { paddingTop: safeAreaTop }] }>
       <View style={styles.navbar}>
-        <Pressable style={styles.brand} onPress={() => navigate('home')}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Go to Davaine home"
+          style={styles.brand}
+          onPress={() => navigate('home')}>
           <View style={styles.brandMark}>
-            <Text style={styles.brandMarkText}>▦</Text>
+            <DavaineMark size={31} />
           </View>
           <Text style={styles.brandName}>Davaine</Text>
         </Pressable>
@@ -244,6 +249,17 @@ export function NavBar({ activeSection, onNavigate, scrollY }: NavBarProps) {
         </View>
       )}
     </View>
+  );
+}
+
+function DavaineMark({ size }: { size: number }) {
+  return (
+    <Image
+      accessible={false}
+      source={require('../../../assets/images/davaine-mark.svg')}
+      contentFit="contain"
+      style={{ width: size, height: size }}
+    />
   );
 }
 
@@ -335,6 +351,8 @@ function FloatingNavLink({
         </View>
         <Animated.Text
           numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.8}
           maxFontSizeMultiplier={1.1}
           style={[
             styles.mobileLinkLabel,
@@ -456,16 +474,8 @@ const styles = StyleSheet.create({
   mobileTopMark: {
     width: 36,
     height: 36,
-    borderRadius: DefaultTheme.radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: DefaultTheme.colors.primary,
-  },
-  mobileTopMarkText: {
-    color: DefaultTheme.colors.white,
-    fontFamily: DefaultTheme.fonts.bodyBold,
-    fontSize: 17,
-    lineHeight: 18,
   },
   mobileTopName: {
     color: DefaultTheme.colors.ink,
@@ -518,21 +528,8 @@ const styles = StyleSheet.create({
   mobileBrandMark: {
     width: 38,
     height: 38,
-    borderRadius: DefaultTheme.radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: DefaultTheme.colors.primary,
-    shadowColor: DefaultTheme.colors.primary,
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 3,
-  },
-  mobileBrandMarkText: {
-    color: DefaultTheme.colors.white,
-    fontFamily: DefaultTheme.fonts.bodyBold,
-    fontSize: 18,
-    lineHeight: 18,
   },
   mobileLinks: {
     flex: 1,
@@ -576,6 +573,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   mobileLinkLabel: {
+    width: '100%',
+    paddingHorizontal: 2,
     fontFamily: DefaultTheme.fonts.bodySemiBold,
     fontSize: 10,
     lineHeight: 13,
@@ -606,16 +605,8 @@ const styles = StyleSheet.create({
   brandMark: {
     width: 31,
     height: 31,
-    borderRadius: DefaultTheme.radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: DefaultTheme.colors.primary,
-  },
-  brandMarkText: {
-    color: DefaultTheme.colors.white,
-    fontFamily: DefaultTheme.fonts.bodyBold,
-    fontSize: 17,
-    lineHeight: 17,
   },
   brandName: {
     color: DefaultTheme.colors.ink,
