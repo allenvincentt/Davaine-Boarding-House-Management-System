@@ -12,6 +12,7 @@ import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { BlurTargetProvider } from '@/components/ui/modals/BlurTargetProvider';
 import { FontFamily } from '@/constants/DefaultTheme';
 
 export default function RootLayout() {
@@ -26,7 +27,9 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <Stack screenOptions={{ headerShown: false }} />
+      <BlurTargetProvider>
+        <Stack screenOptions={{ headerShown: false }} />
+      </BlurTargetProvider>
     </SafeAreaProvider>
   );
 }

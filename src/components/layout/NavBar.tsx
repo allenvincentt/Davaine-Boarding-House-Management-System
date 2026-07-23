@@ -17,6 +17,7 @@ import type { AppIconName } from '@/constants/icons';
 import { landingNavigation, type LandingSection } from '@/constants/landing';
 import { AppIcon } from '@/components/ui/AppIcon';
 import { GradientButton } from '@/components/ui/buttons/GradientButton';
+import { SignInModal } from '@/app/auth/SignInModal';
 
 type NavBarProps = {
   activeSection: LandingSection;
@@ -28,6 +29,7 @@ export function NavBar({ activeSection, onNavigate, scrollY }: NavBarProps) {
   const { width } = useWindowDimensions();
   const { top: safeAreaTop, bottom: safeAreaBottom } = useSafeAreaInsets();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [signInOpen, setSignInOpen] = useState(false);
   const indicatorX = useRef(new Animated.Value(0)).current;
   const indicatorWidth = useRef(new Animated.Value(0)).current;
   const indicatorScale = useRef(new Animated.Value(1)).current;
@@ -144,7 +146,10 @@ export function NavBar({ activeSection, onNavigate, scrollY }: NavBarProps) {
                 },
               ],
             }}>
-            <GradientButton accessibilityLabel="Sign In" style={styles.mobileTopSignIn}>
+            <GradientButton
+              accessibilityLabel="Sign In"
+              style={styles.mobileTopSignIn}
+              onPress={() => setSignInOpen(true)}>
               <Text style={styles.signInLabel}>Sign In</Text>
               <Text style={styles.signInArrow}>→</Text>
             </GradientButton>
@@ -185,6 +190,7 @@ export function NavBar({ activeSection, onNavigate, scrollY }: NavBarProps) {
           </View>
         </View>
       </Animated.View>
+      <SignInModal visible={signInOpen} onClose={() => setSignInOpen(false)} />
       </>
     );
   }
@@ -233,7 +239,10 @@ export function NavBar({ activeSection, onNavigate, scrollY }: NavBarProps) {
             <Text style={styles.menuButtonText}>{menuOpen ? '×' : '☰'}</Text>
           </Pressable>
         ) : (
-          <GradientButton accessibilityLabel="Sign In" style={styles.signInButton}>
+          <GradientButton
+            accessibilityLabel="Sign In"
+            style={styles.signInButton}
+            onPress={() => setSignInOpen(true)}>
             <Text style={styles.signInLabel}>Sign In</Text>
             <Text style={styles.signInArrow}>→</Text>
           </GradientButton>
@@ -251,12 +260,16 @@ export function NavBar({ activeSection, onNavigate, scrollY }: NavBarProps) {
               onPress={() => navigate(link.section)}
             />
           ))}
-          <GradientButton accessibilityLabel="Sign In" style={styles.mobileSignInButton}>
+          <GradientButton
+            accessibilityLabel="Sign In"
+            style={styles.mobileSignInButton}
+            onPress={() => setSignInOpen(true)}>
             <Text style={styles.signInLabel}>Sign In</Text>
             <Text style={styles.signInArrow}>→</Text>
           </GradientButton>
         </View>
       )}
+      <SignInModal visible={signInOpen} onClose={() => setSignInOpen(false)} />
     </View>
   );
 }

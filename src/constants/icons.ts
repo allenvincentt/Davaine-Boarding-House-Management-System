@@ -40,6 +40,11 @@ export const appIcons = {
   arrowDown: { ios: 'arrow.down', android: 'arrow_downward', web: 'arrow_downward' },
   arrowRight: { ios: 'arrow.right', android: 'arrow_forward', web: 'arrow_forward' },
   water: { ios: 'drop.fill', android: 'water_drop', web: 'water_drop' },
+  eye: { ios: 'eye.fill', android: 'visibility', web: 'visibility' },
+  eyeOff: { ios: 'eye.slash.fill', android: 'visibility_off', web: 'visibility_off' },
+  close: { ios: 'xmark', android: 'close', web: 'close' },
+  lock: { ios: 'lock.fill', android: 'lock', web: 'lock' },
+  at: { ios: 'at', android: 'alternate_email', web: 'alternate_email' },
 } satisfies Record<string, PlatformIcon>;
 
 export type AppIconName = keyof typeof appIcons;
