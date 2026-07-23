@@ -16,7 +16,7 @@ import { DefaultTheme } from '@/constants/DefaultTheme';
 import type { AppIconName } from '@/constants/icons';
 import { landingNavigation, type LandingSection } from '@/constants/landing';
 import { AppIcon } from '@/components/ui/AppIcon';
-import { MatchaButton } from '@/components/ui/buttons/MatchaButton';
+import { GradientButton } from '@/components/ui/buttons/GradientButton';
 
 type NavBarProps = {
   activeSection: LandingSection;
@@ -144,7 +144,10 @@ export function NavBar({ activeSection, onNavigate, scrollY }: NavBarProps) {
                 },
               ],
             }}>
-            <MatchaButton label="Sign In" suffix={'\u2192'} style={styles.mobileTopSignIn} />
+            <GradientButton accessibilityLabel="Sign In" style={styles.mobileTopSignIn}>
+              <Text style={styles.signInLabel}>Sign In</Text>
+              <Text style={styles.signInArrow}>→</Text>
+            </GradientButton>
           </Animated.View>
         </Animated.View>
         <Animated.View
@@ -230,7 +233,10 @@ export function NavBar({ activeSection, onNavigate, scrollY }: NavBarProps) {
             <Text style={styles.menuButtonText}>{menuOpen ? '×' : '☰'}</Text>
           </Pressable>
         ) : (
-          <MatchaButton label="Sign In" suffix="›" style={styles.signInButton} />
+          <GradientButton accessibilityLabel="Sign In" style={styles.signInButton}>
+            <Text style={styles.signInLabel}>Sign In</Text>
+            <Text style={styles.signInArrow}>→</Text>
+          </GradientButton>
         )}
       </View>
 
@@ -245,7 +251,10 @@ export function NavBar({ activeSection, onNavigate, scrollY }: NavBarProps) {
               onPress={() => navigate(link.section)}
             />
           ))}
-          <MatchaButton label="Sign In" suffix="›" style={styles.mobileSignInButton} />
+          <GradientButton accessibilityLabel="Sign In" style={styles.mobileSignInButton}>
+            <Text style={styles.signInLabel}>Sign In</Text>
+            <Text style={styles.signInArrow}>→</Text>
+          </GradientButton>
         </View>
       )}
     </View>
@@ -483,8 +492,8 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   mobileTopSignIn: {
-    minHeight: 36,
-    paddingHorizontal: 16,
+    minHeight: 42,
+    paddingHorizontal: 20,
   },
   mobileFloatingShell: {
     position: 'absolute',
@@ -643,8 +652,20 @@ const styles = StyleSheet.create({
     backgroundColor: DefaultTheme.colors.primary,
   },
   signInButton: {
-    minHeight: 34,
-    paddingHorizontal: 20,
+    minHeight: 42,
+    paddingHorizontal: 24,
+  },
+  signInLabel: {
+    color: DefaultTheme.colors.white,
+    fontFamily: DefaultTheme.fonts.bodyBold,
+    fontSize: 15,
+    letterSpacing: 0.2,
+  },
+  signInArrow: {
+    color: DefaultTheme.colors.white,
+    fontFamily: DefaultTheme.fonts.bodyBold,
+    fontSize: 16,
+    lineHeight: 16,
   },
   menuButton: {
     width: 38,
@@ -693,8 +714,8 @@ const styles = StyleSheet.create({
   },
   mobileSignInButton: {
     alignSelf: 'flex-start',
-    minHeight: 34,
+    minHeight: 42,
     marginTop: 6,
-    paddingHorizontal: 18,
+    paddingHorizontal: 22,
   },
 });
