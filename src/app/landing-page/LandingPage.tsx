@@ -13,15 +13,16 @@ import {
   type LayoutChangeEvent,
 } from 'react-native';
 
-import { CurvedCarousel } from './CurvedCarousel';
 import { NavBar } from '@/components/layout/NavBar';
 import { ScrollReveal } from '@/components/layout/ScrollReveal';
 import { AppIcon } from '@/components/ui/AppIcon';
-import { GlowingButton } from '@/components/ui/GlowingButton';
-import { InteractiveCard } from '@/components/ui/InteractiveCard';
-import { MatchaButton } from '@/components/ui/MatchaButton';
-import { RoomCard } from '@/components/ui/RoomCard';
-import { WaterPolicyCard } from '@/components/ui/WaterPolicyCard';
+import { CurvedCarousel } from '@/components/ui/CurvedCarousel';
+import { MapEmbed } from '@/components/ui/MapEmbed';
+import { GlowingButton } from '@/components/ui/buttons/GlowingButton';
+import { MatchaButton } from '@/components/ui/buttons/MatchaButton';
+import { InteractiveCard } from '@/components/ui/cards/InteractiveCard';
+import { RoomCard } from '@/components/ui/cards/RoomCard';
+import { WaterPolicyCard } from '@/components/ui/cards/WaterPolicyCard';
 import { DefaultTheme } from '@/constants/DefaultTheme';
 import type { AppIconName } from '@/constants/icons';
 import {
@@ -33,8 +34,6 @@ import {
   waterPolicies,
   type LandingSection,
 } from '@/constants/landing';
-
-import { MapEmbed } from './MapEmbed';
 
 export default function LandingPage() {
   const { width, height } = useWindowDimensions();

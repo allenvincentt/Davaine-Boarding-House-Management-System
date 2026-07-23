@@ -16,7 +16,7 @@ import { DefaultTheme } from '@/constants/DefaultTheme';
 import type { AppIconName } from '@/constants/icons';
 import { landingNavigation, type LandingSection } from '@/constants/landing';
 import { AppIcon } from '@/components/ui/AppIcon';
-import { MatchaButton } from '@/components/ui/MatchaButton';
+import { MatchaButton } from '@/components/ui/buttons/MatchaButton';
 
 type NavBarProps = {
   activeSection: LandingSection;

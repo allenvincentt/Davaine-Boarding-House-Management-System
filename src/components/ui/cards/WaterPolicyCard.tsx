@@ -4,7 +4,7 @@ import { Animated, Easing, Pressable, StyleSheet, Text, type LayoutChangeEvent }
 import { DefaultTheme } from '@/constants/DefaultTheme';
 import type { AppIconName } from '@/constants/icons';
 
-import { AppIcon } from './AppIcon';
+import { AppIcon } from '../AppIcon';
 
 type WaterPolicyCardProps = {
   icon: AppIconName;
