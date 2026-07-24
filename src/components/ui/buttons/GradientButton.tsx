@@ -11,8 +11,8 @@ import {
   type ViewStyle,
 } from 'react-native';
 
-import { DefaultTheme } from '@/constants/DefaultTheme';
-import { Gradient } from '@/constants/Gradient';
+import { DefaultTheme } from '@/constants/defaultTheme';
+import { Gradient } from '@/constants/gradient';
 
 type GradientButtonProps = {
   children: ReactNode;

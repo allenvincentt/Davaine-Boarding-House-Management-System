@@ -1,24 +1,26 @@
 import { Image } from 'expo-image';
+import { useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
+import { ActivityIndicator, Modal as RNModal, Platform, Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 
+import { SplashScreen } from '@/components/common/SplashScreen';
 import { AppIcon } from '@/components/ui/AppIcon';
 import { Input } from '@/components/ui/Input';
 import { GradientButton } from '@/components/ui/buttons/GradientButton';
 import { Modal } from '@/components/ui/modals/Modal';
-import { DefaultTheme } from '@/constants/DefaultTheme';
-import { Gradient } from '@/constants/Gradient';
-
-type SignInValues = {
-  email: string;
-  password: string;
-};
+import { DefaultTheme } from '@/constants/defaultTheme';
+import { Gradient } from '@/constants/gradient';
+import { useSignInFlow } from '@/hooks/useSignInFlow';
 
 type SignInModalProps = {
   visible: boolean;
   onClose: () => void;
-  onSubmit?: (values: SignInValues) => void;
   onForgotPassword?: () => void;
+};
+
+type FieldErrors = {
+  email?: string;
+  password?: string;
 };
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -27,34 +29,44 @@ const webHeroGradient: ViewStyle & { backgroundImage: string } = {
   backgroundImage: Gradient.base,
 };
 
-export function SignInModal({ visible, onClose, onSubmit, onForgotPassword }: SignInModalProps) {
+export function SignInModal({ visible, onClose, onForgotPassword }: SignInModalProps) {
+  const router = useRouter();
+  const handleSignedIn = useCallback(() => {
+    router.replace('/admin-pages/DashboardPage');
+  }, [router]);
+  const { status, errorMessage, submit, reset } = useSignInFlow(handleSignedIn);
+  const isSubmitting = status === 'submitting';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
   const resetForm = useCallback(() => {
     setEmail('');
     setPassword('');
-    setErrors({});
+    setFieldErrors({});
   }, []);
 
   const handleClose = useCallback(() => {
+    if (isSubmitting) {
+      return;
+    }
     onClose();
     resetForm();
-  }, [onClose, resetForm]);
+    reset();
+  }, [isSubmitting, onClose, resetForm, reset]);
 
   const handleChangeEmail = useCallback((text: string) => {
     setEmail(text);
-    setErrors((current) => (current.email ? { ...current, email: undefined } : current));
+    setFieldErrors((current) => (current.email ? { ...current, email: undefined } : current));
   }, []);
 
   const handleChangePassword = useCallback((text: string) => {
     setPassword(text);
-    setErrors((current) => (current.password ? { ...current, password: undefined } : current));
+    setFieldErrors((current) => (current.password ? { ...current, password: undefined } : current));
   }, []);
 
   const handleSubmit = useCallback(() => {
-    const nextErrors: { email?: string; password?: string } = {};
+    const nextErrors: FieldErrors = {};
 
     if (!email.trim()) {
       nextErrors.email = 'Email is required';
@@ -69,95 +81,111 @@ export function SignInModal({ visible, onClose, onSubmit, onForgotPassword }: Si
     }
 
     if (nextErrors.email || nextErrors.password) {
-      setErrors(nextErrors);
+      setFieldErrors(nextErrors);
       return;
     }
 
-    onSubmit?.({ email: email.trim(), password });
-  }, [email, password, onSubmit]);
+    submit(email.trim(), password);
+  }, [email, password, submit]);
 
   const signInLabel = useMemo(
-    () => (
-      <>
-        <Text style={styles.signInLabel}>Sign In</Text>
-        <Text style={styles.signInArrow}>{'→'}</Text>
-      </>
-    ),
-    [],
+    () =>
+      isSubmitting ? (
+        <ActivityIndicator color={DefaultTheme.colors.white} />
+      ) : (
+        <>
+          <Text style={styles.signInLabel}>Sign In</Text>
+          <Text style={styles.signInArrow}>{'→'}</Text>
+        </>
+      ),
+    [isSubmitting],
   );
 
   return (
-    <Modal visible={visible} onClose={handleClose} contentStyle={styles.modalContent}>
-      <View style={styles.hero}>
-        <View
-          pointerEvents="none"
-          style={[styles.heroGradient, Platform.OS === 'web' && webHeroGradient]}
-        />
-        <Pressable
-          onPress={handleClose}
-          accessibilityRole="button"
-          accessibilityLabel="Close sign in"
-          hitSlop={10}
-          style={styles.closeButton}>
-          <AppIcon name="close" size={16} tintColor={DefaultTheme.colors.white} />
-        </Pressable>
-        <View style={styles.heroMark}>
-          <Image
-            accessible={false}
-            source={require('../../../assets/images/davaine-mark.svg')}
-            contentFit="contain"
-            style={styles.heroMarkImage}
+    <>
+      <Modal
+        visible={visible && status !== 'success'}
+        onClose={handleClose}
+        dismissOnBackdropPress={!isSubmitting}
+        contentStyle={styles.modalContent}>
+        <View style={styles.hero}>
+          <View
+            pointerEvents="none"
+            style={[styles.heroGradient, Platform.OS === 'web' && webHeroGradient]}
           />
+          <Pressable
+            onPress={handleClose}
+            accessibilityRole="button"
+            accessibilityLabel="Close sign in"
+            hitSlop={10}
+            style={styles.closeButton}>
+            <AppIcon name="close" size={16} tintColor={DefaultTheme.colors.white} />
+          </Pressable>
+          <View style={styles.heroMark}>
+            <Image
+              accessible={false}
+              source={require('../../../assets/images/davaine-mark.svg')}
+              contentFit="contain"
+              style={styles.heroMarkImage}
+            />
+          </View>
         </View>
-      </View>
 
-      <View style={styles.sheet}>
-        <Text style={styles.title}>Welcome Back</Text>
-        <Text style={styles.subtitle}>Sign in to manage your stay at Davaine</Text>
+        <View style={styles.sheet}>
+          <Text style={styles.title}>Welcome Back</Text>
+          <Text style={styles.subtitle}>Sign in to manage your stay at Davaine</Text>
 
-        <Input
-          label="Email Address"
-          value={email}
-          onChangeText={handleChangeEmail}
-          error={errors.email}
-          icon="at"
-          keyboardType="email-address"
-          autoComplete="email"
-          textContentType="emailAddress"
-          returnKeyType="next"
-          style={styles.field}
-        />
-        <Input
-          label="Password"
-          value={password}
-          onChangeText={handleChangePassword}
-          error={errors.password}
-          icon="lock"
-          secureTextEntry
-          autoComplete="password"
-          textContentType="password"
-          returnKeyType="done"
-          onSubmitEditing={handleSubmit}
-          style={styles.field}
-        />
+          <Input
+            label="Email Address"
+            value={email}
+            onChangeText={handleChangeEmail}
+            error={fieldErrors.email}
+            icon="at"
+            keyboardType="email-address"
+            autoComplete="email"
+            textContentType="emailAddress"
+            returnKeyType="next"
+            style={styles.field}
+          />
+          <Input
+            label="Password"
+            value={password}
+            onChangeText={handleChangePassword}
+            error={fieldErrors.password}
+            icon="lock"
+            secureTextEntry
+            autoComplete="password"
+            textContentType="password"
+            returnKeyType="done"
+            onSubmitEditing={handleSubmit}
+            style={styles.field}
+          />
 
-        <GradientButton
-          accessibilityLabel="Sign in"
-          onPress={handleSubmit}
-          style={styles.submitButton}>
-          {signInLabel}
-        </GradientButton>
+          {status === 'error' && <Text style={styles.generalError}>{errorMessage}</Text>}
 
-        <Pressable
-          onPress={onForgotPassword}
-          accessibilityRole="button"
-          accessibilityLabel="Forgot your password"
-          style={styles.forgotButton}
-          hitSlop={8}>
-          <Text style={styles.forgotText}>Forgot your password?</Text>
-        </Pressable>
-      </View>
-    </Modal>
+          <GradientButton
+            accessibilityLabel="Sign in"
+            onPress={handleSubmit}
+            disabled={isSubmitting}
+            style={styles.submitButton}>
+            {signInLabel}
+          </GradientButton>
+
+          <Pressable
+            onPress={onForgotPassword}
+            accessibilityRole="button"
+            accessibilityLabel="Forgot your password"
+            style={styles.forgotButton}
+            hitSlop={8}>
+            <Text style={styles.forgotText}>Forgot your password?</Text>
+          </Pressable>
+        </View>
+      </Modal>
+
+      <RNModal visible={visible && status === 'success'} transparent={false} animationType="fade" statusBarTranslucent>
+        <SplashScreen status="loading" loadingMessage="Signing you in…" />
+      </RNModal>
+    </>
   );
 }
 
@@ -223,6 +251,14 @@ const styles = StyleSheet.create({
   field: {
     marginTop: 22,
     marginHorizontal: 8,
+  },
+  generalError: {
+    marginTop: 16,
+    marginHorizontal: 8,
+    color: '#D64545',
+    fontFamily: DefaultTheme.fonts.bodyMedium,
+    fontSize: 12.5,
+    textAlign: 'center',
   },
   submitButton: {
     marginTop: 26,

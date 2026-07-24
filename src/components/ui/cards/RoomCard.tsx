@@ -1,6 +1,6 @@
 import { Image, StyleSheet, Text, View } from 'react-native';
 
-import { DefaultTheme } from '@/constants/DefaultTheme';
+import { DefaultTheme } from '@/constants/defaultTheme';
 import type { RoomInfo } from '@/constants/landing';
 
 import { InteractiveCard } from './InteractiveCard';

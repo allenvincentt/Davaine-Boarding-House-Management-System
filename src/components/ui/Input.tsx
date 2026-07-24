@@ -13,7 +13,7 @@ import {
 } from "react-native";
 
 import { AppIcon } from "@/components/ui/AppIcon";
-import { DefaultTheme } from "@/constants/DefaultTheme";
+import { DefaultTheme } from "@/constants/defaultTheme";
 import type { AppIconName } from "@/constants/icons";
 
 type InputProps = {
@@ -34,6 +34,14 @@ type InputProps = {
 };
 
 const ERROR_COLOR = "#D64545";
+
+const FIELD_HEIGHT = 45;
+const IDLE_LABEL_FONT_SIZE = 14;
+const IDLE_LABEL_LINE_HEIGHT = 18;
+const IDLE_LABEL_TOP = (FIELD_HEIGHT - IDLE_LABEL_LINE_HEIGHT) / 2;
+const FOCUSED_LABEL_FONT_SIZE = 11;
+const FOCUSED_LABEL_LINE_HEIGHT = 14;
+const FOCUSED_LABEL_TOP = -10;
 
 const webOutlineReset: any =
   Platform.OS === "web" ? { outline: "none", boxShadow: "none" } : undefined;
@@ -96,11 +104,15 @@ export function Input({
 
   const labelTop = labelProgress.interpolate({
     inputRange: [0, 1],
-    outputRange: [10, -10],
+    outputRange: [IDLE_LABEL_TOP, FOCUSED_LABEL_TOP],
   });
   const labelFontSize = labelProgress.interpolate({
     inputRange: [0, 1],
-    outputRange: [14, 11],
+    outputRange: [IDLE_LABEL_FONT_SIZE, FOCUSED_LABEL_FONT_SIZE],
+  });
+  const labelLineHeight = labelProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [IDLE_LABEL_LINE_HEIGHT, FOCUSED_LABEL_LINE_HEIGHT],
   });
 
   return (
@@ -116,7 +128,12 @@ export function Input({
             pointerEvents="none"
             style={[
               styles.label,
-              { top: labelTop, fontSize: labelFontSize, color: accentColor },
+              {
+                top: labelTop,
+                fontSize: labelFontSize,
+                lineHeight: labelLineHeight,
+                color: accentColor,
+              },
             ]}
             numberOfLines={1}
           >
@@ -166,7 +183,7 @@ export function Input({
 
 const styles = StyleSheet.create({
   field: {
-    height: 45,
+    height: FIELD_HEIGHT,
     borderWidth: 1.5,
     borderRadius: DefaultTheme.radius.md,
     backgroundColor: DefaultTheme.colors.white,
@@ -194,7 +211,7 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    height: 45,
+    height: FIELD_HEIGHT,
     paddingTop: 0,
     paddingBottom: 0,
     paddingVertical: 0,

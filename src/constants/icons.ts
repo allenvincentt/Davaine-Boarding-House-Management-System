@@ -45,6 +45,28 @@ export const appIcons = {
   close: { ios: 'xmark', android: 'close', web: 'close' },
   lock: { ios: 'lock.fill', android: 'lock', web: 'lock' },
   at: { ios: 'at', android: 'alternate_email', web: 'alternate_email' },
+  dashboard: { ios: 'square.grid.2x2.fill', android: 'dashboard', web: 'dashboard' },
+  document: { ios: 'doc.text.fill', android: 'description', web: 'description' },
+  feedback: { ios: 'bubble.left.fill', android: 'forum', web: 'forum' },
+  chart: { ios: 'chart.bar.fill', android: 'bar_chart', web: 'bar_chart' },
+  directory: {
+    ios: 'person.text.rectangle.fill',
+    android: 'badge',
+    web: 'badge',
+  },
+  search: { ios: 'magnifyingglass', android: 'search', web: 'search' },
+  bell: { ios: 'bell.fill', android: 'notifications', web: 'notifications' },
+  chevronDown: { ios: 'chevron.down', android: 'expand_more', web: 'expand_more' },
+  chevronLeft: { ios: 'chevron.left', android: 'chevron_left', web: 'chevron_left' },
+  chevronRight: { ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' },
+  trendUp: { ios: 'arrow.up.right', android: 'trending_up', web: 'trending_up' },
+  trendDown: { ios: 'arrow.down.right', android: 'trending_down', web: 'trending_down' },
+  signOut: {
+    ios: 'rectangle.portrait.and.arrow.right',
+    android: 'logout',
+    web: 'logout',
+  },
+  warning: { ios: 'exclamationmark.triangle.fill', android: 'warning', web: 'warning' },
 } satisfies Record<string, PlatformIcon>;
 
 export type AppIconName = keyof typeof appIcons;

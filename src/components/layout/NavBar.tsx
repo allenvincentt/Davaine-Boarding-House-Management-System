@@ -1,5 +1,5 @@
+import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Image } from 'expo-image';
 import {
   Animated,
   Easing,
@@ -12,12 +12,15 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { DefaultTheme } from '@/constants/DefaultTheme';
+import { DefaultTheme } from '@/constants/defaultTheme';
 import type { AppIconName } from '@/constants/icons';
 import { landingNavigation, type LandingSection } from '@/constants/landing';
 import { AppIcon } from '@/components/ui/AppIcon';
+import { BrandMark } from '@/components/ui/BrandMark';
+import { GlassPanel } from '@/components/ui/GlassPanel';
 import { GradientButton } from '@/components/ui/buttons/GradientButton';
 import { SignInModal } from '@/app/auth/SignInModal';
+import { useAuth } from '@/providers/AuthProvider';
 
 type NavBarProps = {
   activeSection: LandingSection;
@@ -28,8 +31,18 @@ type NavBarProps = {
 export function NavBar({ activeSection, onNavigate, scrollY }: NavBarProps) {
   const { width } = useWindowDimensions();
   const { top: safeAreaTop, bottom: safeAreaBottom } = useSafeAreaInsets();
+  const router = useRouter();
+  const { session } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const [signInOpen, setSignInOpen] = useState(false);
+
+  const handleSignInPress = useCallback(() => {
+    if (session) {
+      router.push('/admin-pages/DashboardPage');
+      return;
+    }
+    setSignInOpen(true);
+  }, [session, router]);
   const indicatorX = useRef(new Animated.Value(0)).current;
   const indicatorWidth = useRef(new Animated.Value(0)).current;
   const indicatorScale = useRef(new Animated.Value(1)).current;
@@ -122,7 +135,8 @@ export function NavBar({ activeSection, onNavigate, scrollY }: NavBarProps) {
   if (compact) {
     return (
       <>
-        <Animated.View
+        <GlassPanel
+          variant="bar"
           style={[
             styles.mobileTopShell,
             {
@@ -134,7 +148,7 @@ export function NavBar({ activeSection, onNavigate, scrollY }: NavBarProps) {
           ]}>
           <View style={styles.mobileTopBrand}>
             <View style={styles.mobileTopMark}>
-              <DavaineMark size={36} />
+              <BrandMark size={36} />
             </View>
             <Text style={styles.mobileTopName}>Davaine</Text>
           </View>
@@ -149,24 +163,25 @@ export function NavBar({ activeSection, onNavigate, scrollY }: NavBarProps) {
             <GradientButton
               accessibilityLabel="Sign In"
               style={styles.mobileTopSignIn}
-              onPress={() => setSignInOpen(true)}>
+              onPress={handleSignInPress}>
               <Text style={styles.signInLabel}>Sign In</Text>
               <Text style={styles.signInArrow}>→</Text>
             </GradientButton>
           </Animated.View>
-        </Animated.View>
-        <Animated.View
-        style={[
-          styles.mobileFloatingShell,
-          {
-            bottom: Math.max(safeAreaBottom, 10) + 10,
-            height: compactProgress.interpolate({ inputRange: [0, 1], outputRange: [72, 58] }),
-            paddingHorizontal: compactProgress.interpolate({ inputRange: [0, 1], outputRange: [5, 4] }),
-            paddingVertical: compactProgress.interpolate({ inputRange: [0, 1], outputRange: [5, 4] }),
-            borderRadius: compactProgress.interpolate({ inputRange: [0, 1], outputRange: [36, 29] }),
-          },
-        ]}>
-        <View pointerEvents="none" style={styles.glassReflection} />
+        </GlassPanel>
+        <GlassPanel
+          variant="floating"
+          reflection
+          style={[
+            styles.mobileFloatingShell,
+            {
+              bottom: Math.max(safeAreaBottom, 10) + 10,
+              height: compactProgress.interpolate({ inputRange: [0, 1], outputRange: [72, 58] }),
+              paddingHorizontal: compactProgress.interpolate({ inputRange: [0, 1], outputRange: [5, 4] }),
+              paddingVertical: compactProgress.interpolate({ inputRange: [0, 1], outputRange: [5, 4] }),
+              borderRadius: compactProgress.interpolate({ inputRange: [0, 1], outputRange: [36, 29] }),
+            },
+          ]}>
         <View style={styles.mobileFloatingContent}>
           <Pressable
             accessibilityRole="button"
@@ -174,7 +189,7 @@ export function NavBar({ activeSection, onNavigate, scrollY }: NavBarProps) {
             style={styles.hiddenMobileBrand}
             onPress={() => navigate('home')}>
             <View style={styles.mobileBrandMark}>
-              <DavaineMark size={38} />
+              <BrandMark size={38} />
             </View>
           </Pressable>
           <View style={styles.mobileLinks}>
@@ -189,7 +204,7 @@ export function NavBar({ activeSection, onNavigate, scrollY }: NavBarProps) {
             ))}
           </View>
         </View>
-      </Animated.View>
+      </GlassPanel>
       <SignInModal visible={signInOpen} onClose={() => setSignInOpen(false)} />
       </>
     );
@@ -204,7 +219,7 @@ export function NavBar({ activeSection, onNavigate, scrollY }: NavBarProps) {
           style={styles.brand}
           onPress={() => navigate('home')}>
           <View style={styles.brandMark}>
-            <DavaineMark size={31} />
+            <BrandMark size={31} />
           </View>
           <Text style={styles.brandName}>Davaine</Text>
         </Pressable>
@@ -242,7 +257,7 @@ export function NavBar({ activeSection, onNavigate, scrollY }: NavBarProps) {
           <GradientButton
             accessibilityLabel="Sign In"
             style={styles.signInButton}
-            onPress={() => setSignInOpen(true)}>
+            onPress={handleSignInPress}>
             <Text style={styles.signInLabel}>Sign In</Text>
             <Text style={styles.signInArrow}>→</Text>
           </GradientButton>
@@ -263,7 +278,7 @@ export function NavBar({ activeSection, onNavigate, scrollY }: NavBarProps) {
           <GradientButton
             accessibilityLabel="Sign In"
             style={styles.mobileSignInButton}
-            onPress={() => setSignInOpen(true)}>
+            onPress={handleSignInPress}>
             <Text style={styles.signInLabel}>Sign In</Text>
             <Text style={styles.signInArrow}>→</Text>
           </GradientButton>
@@ -271,17 +286,6 @@ export function NavBar({ activeSection, onNavigate, scrollY }: NavBarProps) {
       )}
       <SignInModal visible={signInOpen} onClose={() => setSignInOpen(false)} />
     </View>
-  );
-}
-
-function DavaineMark({ size }: { size: number }) {
-  return (
-    <Image
-      accessible={false}
-      source={require('../../../assets/images/davaine-mark.svg')}
-      contentFit="contain"
-      style={{ width: size, height: size }}
-    />
   );
 }
 
@@ -478,14 +482,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: 'rgba(249, 247, 240, 0.86)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.84)',
-    shadowColor: '#69705A',
-    shadowOpacity: 0.16,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 7,
     zIndex: 31,
   },
   mobileTopBrand: {
@@ -516,24 +512,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     padding: 6,
     borderRadius: 36,
-    backgroundColor: 'rgba(249, 247, 240, 0.84)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.82)',
-    shadowColor: '#69705A',
-    shadowOpacity: 0.2,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 9,
     zIndex: 30,
-  },
-  glassReflection: {
-    position: 'absolute',
-    top: 1,
-    left: 24,
-    right: 24,
-    height: 1,
-    borderRadius: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.96)',
   },
   mobileFloatingContent: {
     flex: 1,

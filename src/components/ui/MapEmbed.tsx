@@ -1,6 +1,6 @@
 import { StyleSheet, View } from 'react-native';
 
-import { DefaultTheme } from '@/constants/DefaultTheme';
+import { DefaultTheme } from '@/constants/defaultTheme';
 
 export function MapEmbed() {
   return <View style={styles.frame} />;

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Animated, Image, StyleSheet, View, useWindowDimensions } from 'react-native';
 
-import { DefaultTheme } from '@/constants/DefaultTheme';
+import { DefaultTheme } from '@/constants/defaultTheme';
 import { carouselImages } from '@/constants/landing';
 
 const inputRange = [-3.6, -3, -2, -1, 0, 1, 2, 3, 3.6];

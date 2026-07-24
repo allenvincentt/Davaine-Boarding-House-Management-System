@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, Text, type LayoutChangeEvent } from 'react-native';
 
-import { DefaultTheme } from '@/constants/DefaultTheme';
+import { DefaultTheme } from '@/constants/defaultTheme';
 import type { AppIconName } from '@/constants/icons';
 
 import { AppIcon } from '../AppIcon';

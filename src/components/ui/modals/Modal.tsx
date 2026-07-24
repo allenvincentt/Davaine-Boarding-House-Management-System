@@ -3,9 +3,11 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   Animated,
   Easing,
+  KeyboardAvoidingView,
   Modal as RNModal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   View,
   type LayoutChangeEvent,
@@ -14,7 +16,7 @@ import {
 } from 'react-native';
 
 import { useBlurTarget } from '@/components/ui/modals/BlurTargetProvider';
-import { DefaultTheme } from '@/constants/DefaultTheme';
+import { DefaultTheme } from '@/constants/defaultTheme';
 
 type ModalProps = {
   visible: boolean;
@@ -190,20 +192,33 @@ export function Modal({
             accessibilityLabel={dismissOnBackdropPress ? 'Close' : undefined}
           />
         </Animated.View>
-        <Animated.View
-          style={[
-            styles.contentShell,
-            contentStyle,
-            heightReady ? { height: contentHeight } : null,
-            {
-              opacity: contentOpacity,
-              transform: [{ translateY: contentTranslateY }, { scale: contentScale }],
-            },
-          ]}>
-          <View onLayout={handleContentLayout} style={styles.contentInner}>
-            {children}
-          </View>
-        </Animated.View>
+        <KeyboardAvoidingView
+          style={styles.keyboardAvoider}
+          pointerEvents="box-none"
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : undefined}>
+          <ScrollView
+            style={styles.keyboardAvoider}
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            pointerEvents="box-none">
+            <Animated.View
+              style={[
+                styles.contentShell,
+                contentStyle,
+                heightReady ? { height: contentHeight } : null,
+                {
+                  opacity: contentOpacity,
+                  transform: [{ translateY: contentTranslateY }, { scale: contentScale }],
+                },
+              ]}>
+              <View onLayout={handleContentLayout} style={styles.contentInner}>
+                {children}
+              </View>
+            </Animated.View>
+          </ScrollView>
+        </KeyboardAvoidingView>
       </View>
     </RNModal>
   );
@@ -212,6 +227,12 @@ export function Modal({
 const styles = StyleSheet.create({
   root: {
     flex: 1,
+  },
+  keyboardAvoider: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
     alignItems: 'center',
     justifyContent: 'center',
     padding: DefaultTheme.spacing.lg,

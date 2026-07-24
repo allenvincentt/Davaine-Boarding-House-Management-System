@@ -23,7 +23,7 @@ import { MatchaButton } from '@/components/ui/buttons/MatchaButton';
 import { InteractiveCard } from '@/components/ui/cards/InteractiveCard';
 import { RoomCard } from '@/components/ui/cards/RoomCard';
 import { WaterPolicyCard } from '@/components/ui/cards/WaterPolicyCard';
-import { DefaultTheme } from '@/constants/DefaultTheme';
+import { DefaultTheme } from '@/constants/defaultTheme';
 import type { AppIconName } from '@/constants/icons';
 import {
   amenities,
