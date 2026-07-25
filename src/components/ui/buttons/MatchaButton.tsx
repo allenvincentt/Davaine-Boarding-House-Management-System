@@ -11,13 +11,17 @@ import {
   type ViewStyle,
 } from 'react-native';
 
+import { AppIcon } from '@/components/ui/AppIcon';
 import { DefaultTheme } from '@/constants/defaultTheme';
+import type { AppIconName } from '@/constants/icons';
 
 type MatchaButtonProps = {
   label: string;
   onPress?: (event: GestureResponderEvent) => void;
   suffix?: string;
+  icon?: AppIconName;
   variant?: 'solid' | 'outline';
+  disabled?: boolean;
   style?: StyleProp<ViewStyle>;
   textStyle?: StyleProp<TextStyle>;
 };
@@ -26,7 +30,9 @@ export function MatchaButton({
   label,
   onPress,
   suffix,
+  icon,
   variant = 'solid',
+  disabled = false,
   style,
   textStyle,
 }: MatchaButtonProps) {
@@ -57,6 +63,7 @@ export function MatchaButton({
       style={[
         styles.button,
         variant === 'outline' && styles.outlineButton,
+        disabled && styles.disabledButton,
         style,
         {
           backgroundColor: hoverProgress.interpolate({
@@ -78,6 +85,13 @@ export function MatchaButton({
           ],
         },
       ]}>
+      {icon && (
+        <AppIcon
+          name={icon}
+          size={16}
+          tintColor={variant === 'outline' ? DefaultTheme.colors.primary : DefaultTheme.colors.white}
+        />
+      )}
       <Animated.Text
         accessible={false}
         numberOfLines={1}
@@ -110,6 +124,7 @@ export function MatchaButton({
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={label}
+        disabled={disabled}
         style={styles.pressable}
         onPress={onPress}
         onHoverIn={() => {
@@ -156,6 +171,9 @@ const styles = StyleSheet.create({
     borderColor: DefaultTheme.colors.primary,
     shadowOpacity: 0,
     elevation: 0,
+  },
+  disabledButton: {
+    opacity: 0.5,
   },
   pressable: {
     position: 'absolute',

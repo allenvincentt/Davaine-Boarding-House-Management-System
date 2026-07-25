@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Pressable,
   StyleSheet,
@@ -12,6 +12,7 @@ import {
 import { AppIcon } from '@/components/ui/AppIcon';
 import { GlassPanel } from '@/components/ui/GlassPanel';
 import { SearchField } from '@/components/ui/SearchField';
+import { Select, type SelectAnchor, type SelectOption } from '@/components/ui/Select';
 import { DefaultTheme } from '@/constants/defaultTheme';
 
 type TopBarProps = {
@@ -20,6 +21,7 @@ type TopBarProps = {
   notificationCount?: number;
   adminName?: string;
   adminRole?: string;
+  onProfilePress?: () => void;
   onSignOut?: () => void;
   style?: StyleProp<ViewStyle>;
 };
@@ -30,6 +32,7 @@ export function TopBar({
   notificationCount = 0,
   adminName = 'Admin',
   adminRole = 'Administrator',
+  onProfilePress,
   onSignOut,
   style,
 }: TopBarProps) {
@@ -47,7 +50,13 @@ export function TopBar({
       <View style={styles.actions}>
         <LiveClock showCaption={!compact} />
         <NotificationBell count={notificationCount} />
-        <AdminMenu name={adminName} role={adminRole} showDetails={!compact} onSignOut={onSignOut} />
+        <AdminMenu
+          name={adminName}
+          role={adminRole}
+          showDetails={!compact}
+          onProfilePress={onProfilePress}
+          onSignOut={onSignOut}
+        />
       </View>
     </GlassPanel>
   );
@@ -101,25 +110,46 @@ function AdminMenu({
   name,
   role,
   showDetails,
+  onProfilePress,
   onSignOut,
 }: {
   name: string;
   role: string;
   showDetails: boolean;
+  onProfilePress?: () => void;
   onSignOut?: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [anchor, setAnchor] = useState<SelectAnchor | null>(null);
+  const triggerRef = useRef<View>(null);
   const nameParts = name.split(' ').filter(Boolean);
   const initials = (nameParts.length > 1 ? nameParts.slice(0, 2).map((part) => part[0]).join('') : name.slice(0, 2))
     .toUpperCase();
 
+  const handleTogglePress = () => {
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    triggerRef.current?.measureInWindow((x, y, width, height) => {
+      setAnchor({ x, y, width, height });
+      setOpen(true);
+    });
+  };
+
+  const menuOptions: SelectOption[] = [
+    { key: 'profile', label: 'Profile', icon: 'user', onSelect: () => onProfilePress?.() },
+    { key: 'signOut', label: 'Sign out', icon: 'signOut', destructive: true, onSelect: () => onSignOut?.() },
+  ];
+
   return (
     <View style={styles.adminMenuWrap}>
       <Pressable
+        ref={triggerRef}
         accessibilityRole="button"
         accessibilityLabel="Account menu"
         style={styles.adminMenu}
-        onPress={() => setOpen((current) => !current)}>
+        onPress={handleTogglePress}>
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>{initials}</Text>
         </View>
@@ -142,21 +172,7 @@ function AdminMenu({
           />
         )}
       </Pressable>
-      {open && (
-        <View style={styles.dropdown}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Sign out"
-            style={styles.dropdownItem}
-            onPress={() => {
-              setOpen(false);
-              onSignOut?.();
-            }}>
-            <AppIcon name="signOut" size={16} tintColor="#D64545" />
-            <Text style={styles.dropdownItemText}>Sign out</Text>
-          </Pressable>
-        </View>
-      )}
+      <Select visible={open} onClose={() => setOpen(false)} options={menuOptions} anchor={anchor} align="right" />
     </View>
   );
 }
@@ -237,36 +253,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-  },
-  dropdown: {
-    position: 'absolute',
-    top: '100%',
-    right: 0,
-    marginTop: 10,
-    minWidth: 150,
-    paddingVertical: 6,
-    borderRadius: DefaultTheme.radius.sm,
-    backgroundColor: DefaultTheme.colors.white,
-    borderWidth: 1,
-    borderColor: DefaultTheme.colors.line,
-    shadowColor: '#4D4E47',
-    shadowOpacity: 0.14,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 6,
-    zIndex: 40,
-  },
-  dropdownItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  dropdownItemText: {
-    color: '#D64545',
-    fontFamily: DefaultTheme.fonts.bodySemiBold,
-    fontSize: 13,
   },
   avatar: {
     width: 38,

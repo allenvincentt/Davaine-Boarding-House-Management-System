@@ -9,6 +9,7 @@ import { adminSectionPaths, type AdminSection } from '@/constants/adminNav';
 import { DefaultTheme } from '@/constants/defaultTheme';
 import { AdminUserRole } from '@/enums/adminUserRoleEnum';
 import { useAuth } from '@/providers/AuthProvider';
+import { UserProfileModal } from '@/app/UserProfileModal';
 
 type PageShellProps = {
   children: ReactNode;
@@ -30,6 +31,7 @@ export function PageShell({ children }: PageShellProps) {
   const compact = width < DefaultTheme.layout.compactNavigation;
   const [collapsed, setCollapsed] = useState(false);
   const [search, setSearch] = useState('');
+  const [profileOpen, setProfileOpen] = useState(false);
 
   const activeSection = sectionForPath(pathname);
   const adminName = profile?.fullName ?? 'Admin';
@@ -55,6 +57,7 @@ export function PageShell({ children }: PageShellProps) {
             notificationCount={3}
             adminName={adminName}
             adminRole={adminRole}
+            onProfilePress={() => setProfileOpen(true)}
             onSignOut={handleSignOut}
           />
           {children}
@@ -65,6 +68,7 @@ export function PageShell({ children }: PageShellProps) {
           collapsed={collapsed}
           onToggleCollapsed={() => setCollapsed((current) => !current)}
         />
+        <UserProfileModal visible={profileOpen} onClose={() => setProfileOpen(false)} />
       </View>
     );
   }
@@ -86,11 +90,13 @@ export function PageShell({ children }: PageShellProps) {
             notificationCount={3}
             adminName={adminName}
             adminRole={adminRole}
+            onProfilePress={() => setProfileOpen(true)}
             onSignOut={handleSignOut}
           />
           {children}
         </View>
       </View>
+      <UserProfileModal visible={profileOpen} onClose={() => setProfileOpen(false)} />
     </View>
   );
 }

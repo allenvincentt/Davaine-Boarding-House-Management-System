@@ -7,12 +7,14 @@ import {
   StyleSheet,
   TextInput,
   View,
+  type FocusEvent,
   type StyleProp,
   type TextInputProps,
   type ViewStyle,
 } from "react-native";
 
 import { AppIcon } from "@/components/ui/AppIcon";
+import { useModalKeyboardFocus } from "@/components/ui/modals/Modal";
 import { DefaultTheme } from "@/constants/defaultTheme";
 import type { AppIconName } from "@/constants/icons";
 
@@ -28,6 +30,7 @@ type InputProps = {
   autoComplete?: TextInputProps["autoComplete"];
   textContentType?: TextInputProps["textContentType"];
   returnKeyType?: TextInputProps["returnKeyType"];
+  maxLength?: number;
   onSubmitEditing?: () => void;
   style?: StyleProp<ViewStyle>;
   accessibilityLabel?: string;
@@ -58,6 +61,7 @@ export function Input({
   autoComplete,
   textContentType,
   returnKeyType,
+  maxLength,
   onSubmitEditing,
   style,
   accessibilityLabel,
@@ -67,6 +71,7 @@ export function Input({
   const labelProgress = useRef(
     new Animated.Value(value.length > 0 ? 1 : 0),
   ).current;
+  const focusField = useModalKeyboardFocus();
 
   const animateLabel = (toValue: number) => {
     Animated.timing(labelProgress, {
@@ -77,9 +82,10 @@ export function Input({
     }).start();
   };
 
-  const handleFocus = () => {
+  const handleFocus = (event: FocusEvent) => {
     setIsFocused(true);
     animateLabel(1);
+    focusField?.(event.target);
   };
 
   const handleBlur = () => {
@@ -150,6 +156,7 @@ export function Input({
             autoComplete={autoComplete}
             textContentType={textContentType}
             returnKeyType={returnKeyType}
+            maxLength={maxLength}
             onSubmitEditing={onSubmitEditing}
             accessibilityLabel={accessibilityLabel ?? label}
             style={[styles.input, webOutlineReset]}

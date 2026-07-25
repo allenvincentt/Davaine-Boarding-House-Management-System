@@ -7,10 +7,13 @@ import { SplashScreen } from '@/components/common/SplashScreen';
 import { AppIcon } from '@/components/ui/AppIcon';
 import { Input } from '@/components/ui/Input';
 import { GradientButton } from '@/components/ui/buttons/GradientButton';
+import { MatchaButton } from '@/components/ui/buttons/MatchaButton';
 import { Modal } from '@/components/ui/modals/Modal';
 import { DefaultTheme } from '@/constants/defaultTheme';
 import { Gradient } from '@/constants/gradient';
+import type { AppIconName } from '@/constants/icons';
 import { useSignInFlow } from '@/hooks/useSignInFlow';
+import { useAuth } from '@/providers/AuthProvider';
 
 type SignInModalProps = {
   visible: boolean;
@@ -29,16 +32,36 @@ const webHeroGradient: ViewStyle & { backgroundImage: string } = {
   backgroundImage: Gradient.base,
 };
 
+const BIOMETRIC_COPY: Record<'facial' | 'fingerprint' | 'other', { label: string; icon: AppIconName }> = {
+  facial: { label: 'Sign in with Face ID', icon: 'faceId' },
+  fingerprint: { label: 'Sign in with Fingerprint', icon: 'fingerprint' },
+  other: { label: 'Sign in with Passkey', icon: 'passkey' },
+};
+
 export function SignInModal({ visible, onClose, onForgotPassword }: SignInModalProps) {
   const router = useRouter();
+  const { biometricKind, biometricAvailable } = useAuth();
   const handleSignedIn = useCallback(() => {
     router.replace('/admin-pages/DashboardPage');
   }, [router]);
-  const { status, errorMessage, submit, reset } = useSignInFlow(handleSignedIn);
+  const { status, errorMessage, submit, submitBiometric, reset } = useSignInFlow(handleSignedIn);
   const isSubmitting = status === 'submitting';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+
+  const biometricCopy = useMemo(() => {
+    if (Platform.OS === 'web') {
+      return BIOMETRIC_COPY.other;
+    }
+    if (biometricKind === 'facial') {
+      return BIOMETRIC_COPY.facial;
+    }
+    if (biometricKind === 'fingerprint') {
+      return BIOMETRIC_COPY.fingerprint;
+    }
+    return BIOMETRIC_COPY.other;
+  }, [biometricKind]);
 
   const resetForm = useCallback(() => {
     setEmail('');
@@ -88,6 +111,13 @@ export function SignInModal({ visible, onClose, onForgotPassword }: SignInModalP
     submit(email.trim(), password);
   }, [email, password, submit]);
 
+  const handleBiometricSignIn = useCallback(() => {
+    if (isSubmitting) {
+      return;
+    }
+    submitBiometric();
+  }, [isSubmitting, submitBiometric]);
+
   const signInLabel = useMemo(
     () =>
       isSubmitting ? (
@@ -134,6 +164,24 @@ export function SignInModal({ visible, onClose, onForgotPassword }: SignInModalP
         <View style={styles.sheet}>
           <Text style={styles.title}>Welcome Back</Text>
           <Text style={styles.subtitle}>Sign in to manage your stay at Davaine</Text>
+
+          {biometricAvailable && (
+            <>
+              <MatchaButton
+                label={biometricCopy.label}
+                icon={biometricCopy.icon}
+                variant="outline"
+                disabled={isSubmitting}
+                onPress={handleBiometricSignIn}
+                style={styles.biometricButton}
+              />
+              <View style={styles.dividerRow}>
+                <View style={styles.dividerLine} />
+                <Text style={styles.dividerText}>or sign in with password</Text>
+                <View style={styles.dividerLine} />
+              </View>
+            </>
+          )}
 
           <Input
             label="Email Address"
@@ -248,6 +296,28 @@ const styles = StyleSheet.create({
     fontSize: 13,
     textAlign: 'center',
   },
+  biometricButton: {
+    marginTop: 26,
+    marginHorizontal: 8,
+    alignSelf: 'stretch',
+  },
+  dividerRow: {
+    marginTop: 20,
+    marginHorizontal: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: DefaultTheme.colors.line,
+  },
+  dividerText: {
+    color: DefaultTheme.colors.muted,
+    fontFamily: DefaultTheme.fonts.bodyMedium,
+    fontSize: 11.5,
+  },
   field: {
     marginTop: 22,
     marginHorizontal: 8,
@@ -284,5 +354,6 @@ const styles = StyleSheet.create({
     color: DefaultTheme.colors.primary,
     fontFamily: DefaultTheme.fonts.bodySemiBold,
     fontSize: 13,
+    textDecorationLine: 'underline',
   },
 });

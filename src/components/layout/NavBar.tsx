@@ -19,6 +19,7 @@ import { AppIcon } from '@/components/ui/AppIcon';
 import { BrandMark } from '@/components/ui/BrandMark';
 import { GlassPanel } from '@/components/ui/GlassPanel';
 import { GradientButton } from '@/components/ui/buttons/GradientButton';
+import { ForgotPasswordModal } from '@/app/auth/ForgotPasswordModal';
 import { SignInModal } from '@/app/auth/SignInModal';
 import { useAuth } from '@/providers/AuthProvider';
 
@@ -35,6 +36,7 @@ export function NavBar({ activeSection, onNavigate, scrollY }: NavBarProps) {
   const { session } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const [signInOpen, setSignInOpen] = useState(false);
+  const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
 
   const handleSignInPress = useCallback(() => {
     if (session) {
@@ -43,6 +45,16 @@ export function NavBar({ activeSection, onNavigate, scrollY }: NavBarProps) {
     }
     setSignInOpen(true);
   }, [session, router]);
+
+  const handleForgotPassword = useCallback(() => {
+    setSignInOpen(false);
+    setForgotPasswordOpen(true);
+  }, []);
+
+  const handleBackToSignIn = useCallback(() => {
+    setForgotPasswordOpen(false);
+    setSignInOpen(true);
+  }, []);
   const indicatorX = useRef(new Animated.Value(0)).current;
   const indicatorWidth = useRef(new Animated.Value(0)).current;
   const indicatorScale = useRef(new Animated.Value(1)).current;
@@ -205,7 +217,16 @@ export function NavBar({ activeSection, onNavigate, scrollY }: NavBarProps) {
           </View>
         </View>
       </GlassPanel>
-      <SignInModal visible={signInOpen} onClose={() => setSignInOpen(false)} />
+      <SignInModal
+        visible={signInOpen}
+        onClose={() => setSignInOpen(false)}
+        onForgotPassword={handleForgotPassword}
+      />
+      <ForgotPasswordModal
+        visible={forgotPasswordOpen}
+        onClose={() => setForgotPasswordOpen(false)}
+        onBackToSignIn={handleBackToSignIn}
+      />
       </>
     );
   }
@@ -284,7 +305,16 @@ export function NavBar({ activeSection, onNavigate, scrollY }: NavBarProps) {
           </GradientButton>
         </View>
       )}
-      <SignInModal visible={signInOpen} onClose={() => setSignInOpen(false)} />
+      <SignInModal
+        visible={signInOpen}
+        onClose={() => setSignInOpen(false)}
+        onForgotPassword={handleForgotPassword}
+      />
+      <ForgotPasswordModal
+        visible={forgotPasswordOpen}
+        onClose={() => setForgotPasswordOpen(false)}
+        onBackToSignIn={handleBackToSignIn}
+      />
     </View>
   );
 }
