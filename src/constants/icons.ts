@@ -69,6 +69,12 @@ export const appIcons = {
   warning: { ios: 'exclamationmark.triangle.fill', android: 'warning', web: 'warning' },
   check: { ios: 'checkmark', android: 'check', web: 'check' },
   fingerprint: { ios: 'touchid', android: 'fingerprint', web: 'fingerprint' },
+  plus: { ios: 'plus', android: 'add', web: 'add' },
+  userPlus: { ios: 'person.badge.plus', android: 'person_add', web: 'person_add' },
+  more: { ios: 'ellipsis', android: 'more_vert', web: 'more_vert' },
+  edit: { ios: 'square.and.pencil', android: 'edit', web: 'edit' },
+  trash: { ios: 'trash', android: 'delete', web: 'delete' },
+  power: { ios: 'power', android: 'power_settings_new', web: 'power_settings_new' },
 } satisfies Record<string, PlatformIcon>;
 
 export type AppIconName = keyof typeof appIcons;

@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react';
 import { StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
-import Svg, { Circle, Defs, Line, LinearGradient, Path, Stop } from 'react-native-svg';
+import Svg, { Defs, Line, LinearGradient, Stop } from 'react-native-svg';
 
+import { AnimatedCircle, AnimatedPath } from '@/components/ui/charts/AnimatedSvg';
 import { DefaultTheme } from '@/constants/defaultTheme';
+import { useEntranceProgress } from '@/hooks/useEntranceAnimation';
 
 export type LineSeries = {
   key: string;
@@ -21,9 +23,13 @@ type LineAreaChartProps = {
 const Y_AXIS_WIDTH = 26;
 const PADDING_TOP = 10;
 const TICK_COUNT = 4;
+const DRAW_DURATION = 1250;
+const DRAW_DELAY = 120;
+const DOT_WINDOW = 0.12;
 
 export function LineAreaChart({ labels, series, height = 210, maxValue }: LineAreaChartProps) {
   const [width, setWidth] = useState(0);
+  const draw = useEntranceProgress(DRAW_DURATION, DRAW_DELAY, width > 0);
 
   const handleLayout = (event: LayoutChangeEvent) => {
     setWidth(event.nativeEvent.layout.width);
@@ -61,7 +67,14 @@ export function LineAreaChart({ labels, series, height = 210, maxValue }: LineAr
       const areaD = entry.fill
         ? `${d} L ${points[points.length - 1].x} ${height} L ${points[0].x} ${height} Z`
         : null;
-      return { key: entry.key, color: entry.color, d, areaD, points };
+      const length = points.reduce((sum, point, index) => {
+        if (index === 0) {
+          return sum;
+        }
+        const previous = points[index - 1];
+        return sum + Math.hypot(point.x - previous.x, point.y - previous.y);
+      }, 0);
+      return { key: entry.key, color: entry.color, d, areaD, points, length: Math.max(length, 1) };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [series, width, height, labels.length]);
@@ -82,7 +95,13 @@ export function LineAreaChart({ labels, series, height = 210, maxValue }: LineAr
               <Defs>
                 {lines.map((line) =>
                   line.areaD ? (
-                    <LinearGradient key={`grad-${line.key}`} id={`grad-${line.key}`} x1="0" y1="0" x2="0" y2="1">
+                    <LinearGradient
+                      key={`grad-${line.key}`}
+                      id={`grad-${line.key}`}
+                      x1="0"
+                      y1="0"
+                      x2="0"
+                      y2="1">
                       <Stop offset="0" stopColor={line.color} stopOpacity={0.24} />
                       <Stop offset="1" stopColor={line.color} stopOpacity={0} />
                     </LinearGradient>
@@ -105,11 +124,17 @@ export function LineAreaChart({ labels, series, height = 210, maxValue }: LineAr
               })}
               {lines.map((line) =>
                 line.areaD ? (
-                  <Path key={`area-${line.key}`} d={line.areaD} fill={`url(#grad-${line.key})`} stroke="none" />
+                  <AnimatedPath
+                    key={`area-${line.key}`}
+                    d={line.areaD}
+                    fill={`url(#grad-${line.key})`}
+                    stroke="none"
+                    opacity={draw}
+                  />
                 ) : null,
               )}
               {lines.map((line) => (
-                <Path
+                <AnimatedPath
                   key={`line-${line.key}`}
                   d={line.d}
                   stroke={line.color}
@@ -117,12 +142,35 @@ export function LineAreaChart({ labels, series, height = 210, maxValue }: LineAr
                   fill="none"
                   strokeLinecap="round"
                   strokeLinejoin="round"
+                  strokeDasharray={`${line.length} ${line.length}`}
+                  strokeDashoffset={draw.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [line.length, 0],
+                  })}
                 />
               ))}
               {lines.map((line) =>
-                line.points.map((point, index) => (
-                  <Circle key={`dot-${line.key}-${index}`} cx={point.x} cy={point.y} r={3.5} fill={line.color} />
-                )),
+                line.points.map((point, index) => {
+                  const reached =
+                    line.points.length > 1
+                      ? (index / (line.points.length - 1)) * (1 - DOT_WINDOW)
+                      : 0;
+                  const appear = draw.interpolate({
+                    inputRange: [reached, reached + DOT_WINDOW],
+                    outputRange: [0, 1],
+                    extrapolate: 'clamp',
+                  });
+                  return (
+                    <AnimatedCircle
+                      key={`dot-${line.key}-${index}`}
+                      cx={point.x}
+                      cy={point.y}
+                      r={appear.interpolate({ inputRange: [0, 1], outputRange: [0, 3.5] })}
+                      opacity={appear}
+                      fill={line.color}
+                    />
+                  );
+                }),
               )}
             </Svg>
           )}

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
-import { ScrollView, StyleSheet, useWindowDimensions } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, useWindowDimensions } from 'react-native';
 
+import { usePageRefresh } from '@/components/layout/PageRefreshContext';
 import { DefaultTheme } from '@/constants/defaultTheme';
 
 type MainContentAreaProps = {
@@ -10,12 +11,24 @@ type MainContentAreaProps = {
 export function MainContentArea({ children }: MainContentAreaProps) {
   const { width } = useWindowDimensions();
   const compact = width < DefaultTheme.layout.compactNavigation;
+  const { enabled, refreshing, onRefresh } = usePageRefresh();
 
   return (
     <ScrollView
       style={styles.scroll}
       contentContainerStyle={[styles.scrollContent, compact && styles.scrollContentMobile]}
-      showsVerticalScrollIndicator={false}>
+      showsVerticalScrollIndicator={false}
+      refreshControl={
+        enabled ? (
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={DefaultTheme.colors.primary}
+            colors={[DefaultTheme.colors.primary]}
+            progressBackgroundColor={DefaultTheme.colors.white}
+          />
+        ) : undefined
+      }>
       {children}
     </ScrollView>
   );

@@ -1,9 +1,16 @@
-import type { ReactNode } from 'react';
-import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Children, cloneElement, isValidElement, useRef, type ReactNode } from 'react';
+import { Animated, Easing, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { AppIcon } from '@/components/ui/AppIcon';
 import { DefaultTheme } from '@/constants/defaultTheme';
 import type { AppIconName } from '@/constants/icons';
+import { useCountUp, useEntranceProgress } from '@/hooks/useEntranceAnimation';
+
+const ENTRANCE_DURATION = 720;
+const COUNT_DURATION = 1100;
+const TRACK_DURATION = 1000;
+const HOVER_DURATION = 200;
+const STAGGER = 90;
 
 type KPITrend = {
   direction: 'up' | 'down';
@@ -20,6 +27,7 @@ type KPICardProps = {
   caption: string;
   trend?: KPITrend;
   progress?: number;
+  delay?: number;
   style?: StyleProp<ViewStyle>;
 };
 
@@ -33,19 +41,65 @@ export function KPICard({
   caption,
   trend,
   progress = 1,
+  delay = 0,
   style,
 }: KPICardProps) {
   const trendColor = trend?.direction === 'down' ? '#C4453B' : '#4C8A2E';
+  const numeric = typeof value === 'number';
+  const fill = Math.round(Math.min(Math.max(progress, 0), 1) * 100);
+
+  const entrance = useEntranceProgress(ENTRANCE_DURATION, delay);
+  const trackProgress = useEntranceProgress(TRACK_DURATION, delay + 140);
+  const counted = useCountUp(numeric ? (value as number) : 0, COUNT_DURATION, delay + 80, numeric);
+  const hover = useRef(new Animated.Value(0)).current;
+
+  const animateHover = (toValue: number) => {
+    Animated.timing(hover, {
+      toValue,
+      duration: HOVER_DURATION,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  };
 
   return (
-    <View style={[styles.card, style]}>
+    <Animated.View
+      onPointerEnter={() => animateHover(1)}
+      onPointerLeave={() => animateHover(0)}
+      style={[
+        styles.card,
+        style,
+        {
+          opacity: entrance,
+          borderColor: hover.interpolate({
+            inputRange: [0, 1],
+            outputRange: [DefaultTheme.colors.line, accentColor],
+          }),
+          shadowColor: hover.interpolate({
+            inputRange: [0, 1],
+            outputRange: ['#4D4E47', accentColor],
+          }),
+          shadowOpacity: hover.interpolate({ inputRange: [0, 1], outputRange: [0.06, 0.24] }),
+          shadowRadius: hover.interpolate({ inputRange: [0, 1], outputRange: [12, 20] }),
+          elevation: hover.interpolate({ inputRange: [0, 1], outputRange: [2, 7] }),
+          transform: [
+            {
+              translateY: Animated.add(
+                entrance.interpolate({ inputRange: [0, 1], outputRange: [16, 0] }),
+                hover.interpolate({ inputRange: [0, 1], outputRange: [0, -6] }),
+              ),
+            },
+            { scale: hover.interpolate({ inputRange: [0, 1], outputRange: [1, 1.015] }) },
+          ],
+        },
+      ]}>
       <View style={styles.header}>
         <Text style={styles.label}>{label}</Text>
         <View style={[styles.iconBadge, { backgroundColor: iconBackground }]}>
           <AppIcon name={icon} size={16} tintColor={iconColor} />
         </View>
       </View>
-      <Text style={styles.value}>{value}</Text>
+      <Text style={styles.value}>{numeric ? counted : value}</Text>
       <View style={styles.captionRow}>
         {trend && (
           <View style={styles.trend}>
@@ -62,14 +116,20 @@ export function KPICard({
         </Text>
       </View>
       <View style={styles.track}>
-        <View
+        <Animated.View
           style={[
             styles.trackFill,
-            { backgroundColor: accentColor, width: `${Math.round(progress * 100)}%` },
+            {
+              backgroundColor: accentColor,
+              width: trackProgress.interpolate({
+                inputRange: [0, 1],
+                outputRange: ['0%', `${fill}%`],
+              }),
+            },
           ]}
         />
       </View>
-    </View>
+    </Animated.View>
   );
 }
 
@@ -79,7 +139,16 @@ type KPICardsRowProps = {
 };
 
 export function KPICardsRow({ children, style }: KPICardsRowProps) {
-  return <View style={[styles.row, style]}>{children}</View>;
+  return (
+    <View style={[styles.row, style]}>
+      {Children.map(children, (child, index) => {
+        if (!isValidElement<KPICardProps>(child)) {
+          return child;
+        }
+        return cloneElement(child, { delay: child.props.delay ?? index * STAGGER });
+      })}
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({

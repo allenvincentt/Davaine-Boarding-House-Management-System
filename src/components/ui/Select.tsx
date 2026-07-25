@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   Animated,
   Easing,
+  Platform,
   Modal as RNModal,
   Pressable,
   StyleSheet,
@@ -10,6 +11,7 @@ import {
 } from 'react-native';
 
 import { AppIcon } from '@/components/ui/AppIcon';
+import { GlassMaterial } from '@/components/ui/GlassPanel';
 import { DefaultTheme } from '@/constants/defaultTheme';
 import type { AppIconName } from '@/constants/icons';
 
@@ -40,6 +42,11 @@ type SelectProps = {
 const OPEN_DURATION = 160;
 const CLOSE_DURATION = 120;
 const ANCHOR_GAP = 10;
+const ITEM_HEIGHT = 38;
+const PANEL_PADDING = 12;
+const SCREEN_MARGIN = 12;
+const PANEL_RADIUS = DefaultTheme.radius.md;
+const BLUR_ENABLED = Platform.OS !== 'android';
 
 export function Select({ visible, onClose, options, anchor, align = 'right', minWidth = 170 }: SelectProps) {
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
@@ -79,11 +86,18 @@ export function Select({ visible, onClose, options, anchor, align = 'right', min
     return null;
   }
 
-  const top = Math.min(anchor.y + anchor.height + ANCHOR_GAP, windowHeight - 12);
+  const panelHeight = options.length * ITEM_HEIGHT + PANEL_PADDING;
+  const belowTop = anchor.y + anchor.height + ANCHOR_GAP;
+  const flipAbove =
+    belowTop + panelHeight > windowHeight - SCREEN_MARGIN &&
+    anchor.y - ANCHOR_GAP - panelHeight > SCREEN_MARGIN;
+  const top = flipAbove
+    ? anchor.y - ANCHOR_GAP - panelHeight
+    : Math.min(belowTop, Math.max(windowHeight - panelHeight - SCREEN_MARGIN, SCREEN_MARGIN));
   const horizontalStyle =
     align === 'left'
-      ? { left: Math.max(anchor.x, 12) }
-      : { right: Math.max(windowWidth - (anchor.x + anchor.width), 12) };
+      ? { left: Math.max(anchor.x, SCREEN_MARGIN) }
+      : { right: Math.max(windowWidth - (anchor.x + anchor.width), SCREEN_MARGIN) };
 
   return (
     <RNModal visible transparent animationType="none" statusBarTranslucent onRequestClose={onClose}>
@@ -106,6 +120,12 @@ export function Select({ visible, onClose, options, anchor, align = 'right', min
             ],
           },
         ]}>
+        <GlassMaterial
+          variant="control"
+          backgroundHint={DefaultTheme.colors.background}
+          radius={PANEL_RADIUS}
+          blurEnabled={BLUR_ENABLED}
+        />
         {options.map((option, index) => (
           <SelectItem
             key={option.key}
@@ -154,14 +174,13 @@ const styles = StyleSheet.create({
   panel: {
     position: 'absolute',
     paddingVertical: 6,
-    borderRadius: DefaultTheme.radius.sm,
-    backgroundColor: DefaultTheme.colors.white,
-    borderWidth: 1,
-    borderColor: DefaultTheme.colors.line,
-    shadowColor: '#4D4E47',
-    shadowOpacity: 0.16,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 10 },
+    borderRadius: PANEL_RADIUS,
+    backgroundColor: 'rgba(249, 247, 240, 0.72)',
+    overflow: 'hidden',
+    shadowColor: '#69705A',
+    shadowOpacity: 0.2,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 12 },
     elevation: 8,
   },
   item: {
@@ -172,11 +191,11 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   itemHovered: {
-    backgroundColor: DefaultTheme.colors.cool,
+    backgroundColor: 'rgba(255, 255, 255, 0.55)',
   },
   itemDivider: {
     borderBottomWidth: 1,
-    borderBottomColor: DefaultTheme.colors.line,
+    borderBottomColor: 'rgba(255, 255, 255, 0.55)',
   },
   itemText: {
     color: DefaultTheme.colors.ink,

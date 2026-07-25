@@ -508,6 +508,7 @@ type GlassMaterialProps = {
   blurEnabled?: boolean;
   sheen?: boolean;
   bordered?: boolean;
+  wash?: boolean;
   style?: StyleProp<ViewStyle>;
 };
 
@@ -519,6 +520,7 @@ export function GlassMaterial({
   blurEnabled = true,
   sheen = false,
   bordered = true,
+  wash = true,
   style,
 }: GlassMaterialProps) {
   const { tone, toneProgress } = useGlassEnvironment(backgroundHint);
@@ -590,7 +592,9 @@ export function GlassMaterial({
         />
       )}
       <Animated.View style={[glassStyles.layer, { backgroundColor: tint }]} />
-      <Animated.View style={[glassStyles.layer, GlassGradients.wash, { opacity: washOpacity }]} />
+      {wash && (
+        <Animated.View style={[glassStyles.layer, GlassGradients.wash, { opacity: washOpacity }]} />
+      )}
       <Animated.View style={[glassStyles.layer, GlassGradients.body, { opacity: lensOpacity }]} />
       <Animated.View style={[glassStyles.edgeLeft, GlassGradients.edgeLeft, { opacity: bounceOpacity }]} />
       <Animated.View
@@ -654,6 +658,7 @@ type GlassPanelProps = {
   presence?: GlassAnimatedNumber;
   blurEnabled?: boolean;
   sheen?: boolean;
+  wash?: boolean;
   onLayout?: (event: LayoutChangeEvent) => void;
 };
 
@@ -669,6 +674,7 @@ export function GlassPanel({
   presence = 1,
   blurEnabled = true,
   sheen = false,
+  wash = true,
   onLayout,
 }: GlassPanelProps) {
   const { toneProgress } = useGlassEnvironment(backgroundHint);
@@ -726,6 +732,7 @@ export function GlassPanel({
         interaction={interaction}
         blurEnabled={blurEnabled}
         sheen={sheen}
+        wash={wash}
         style={[{ opacity: presence }, materialStyle]}
       />
       {reflection && (
@@ -757,6 +764,7 @@ type GlassPressableProps = {
   blurEnabled?: boolean;
   sheen?: boolean;
   bordered?: boolean;
+  wash?: boolean;
   lift?: number;
   flex?: number;
   accessibilityLabel?: string;
@@ -778,6 +786,7 @@ export function GlassPressable({
   blurEnabled = false,
   sheen = true,
   bordered = true,
+  wash = true,
   lift = 2,
   flex = 0.05,
   accessibilityLabel,
@@ -837,6 +846,7 @@ export function GlassPressable({
         blurEnabled={blurEnabled}
         bordered={bordered}
         sheen={sheen}
+        wash={wash}
       />
       {accent && (
         <Animated.View

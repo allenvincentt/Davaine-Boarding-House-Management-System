@@ -16,12 +16,11 @@ import { BrandMark } from '@/components/ui/BrandMark';
 import { GlowingButton, GlowingButtonGhostMetrics } from '@/components/ui/buttons/GlowingButton';
 import {
   GlassLensView,
+  GlassMaterial,
   GlassPanel,
   GlassPressable,
   useGlassInteraction,
   useGlassLens,
-  useLensMagnify,
-  type GlassLensController,
   type GlassLensTarget,
 } from '@/components/ui/GlassPanel';
 import { adminNavFlat, adminNavigation, type AdminNavItem, type AdminSection } from '@/constants/adminNav';
@@ -29,6 +28,7 @@ import { DefaultTheme } from '@/constants/defaultTheme';
 import { GlassMotion } from '@/constants/glassTheme';
 
 type ItemLocalLayout = { x: number; y: number; width: number; height: number };
+type RailLayout = { x: number; width: number };
 
 export const SIDEBAR_WIDTH_EXPANDED = 248;
 export const SIDEBAR_WIDTH_COLLAPSED = 84;
@@ -46,6 +46,11 @@ const NAV_ICON_CENTER_SHIFT = Math.max(
   0,
 );
 
+const TAB_HEIGHT = 42;
+const TAB_ICON_SIZE = 20;
+const TAB_PADDING = 11;
+const TAB_LABEL_GAP = 8;
+
 const MATCHA_SHADOW = {
   shadowColor: DefaultTheme.colors.primary,
   shadowOpacity: 0.1,
@@ -54,53 +59,66 @@ const MATCHA_SHADOW = {
   elevation: 7,
 };
 
+const MATCHA_SHADOW_COMPACT = {
+  shadowColor: DefaultTheme.colors.primary,
+  shadowOpacity: 0.06,
+  shadowRadius: 10,
+  shadowOffset: { width: 0, height: 3 },
+  elevation: 2,
+};
+
 type SideBarProps = {
   activeSection: AdminSection;
   onNavigate: (section: AdminSection) => void;
   collapsed: boolean;
   onToggleCollapsed: () => void;
+  onSignOut?: () => void;
 };
 
-export function SideBar({ activeSection, onNavigate, collapsed, onToggleCollapsed }: SideBarProps) {
+export function SideBar({
+  activeSection,
+  onNavigate,
+  collapsed,
+  onToggleCollapsed,
+  onSignOut,
+}: SideBarProps) {
   const { width } = useWindowDimensions();
   const { top: safeAreaTop, bottom: safeAreaBottom } = useSafeAreaInsets();
   const compact = width < DefaultTheme.layout.compactNavigation;
   const collapseProgress = useRef(new Animated.Value(collapsed ? 1 : 0)).current;
   const shellInteraction = useGlassInteraction({ shimmerOnPress: false });
   const railInteraction = useGlassInteraction({ shimmerOnPress: false });
-  const railLens = useGlassLens('x');
-  const [railLayouts, setRailLayouts] = useState<Partial<Record<AdminSection, GlassLensTarget>>>({});
+
+  const railScrollRef = useRef<ScrollView>(null);
+  const railViewportWidth = useRef(0);
+  const railLayouts = useRef<Partial<Record<AdminSection, RailLayout>>>({});
 
   const registerRailLayout = useCallback((section: AdminSection, event: LayoutChangeEvent) => {
-    const { x, y, width: cellWidth, height } = event.nativeEvent.layout;
-    const next: GlassLensTarget = {
-      x: x + 2,
-      y: y + 1,
-      width: Math.max(cellWidth - 4, 24),
-      height: Math.max(height - 2, 24),
-    };
+    const { x, width: tabWidth } = event.nativeEvent.layout;
+    railLayouts.current[section] = { x, width: tabWidth };
+  }, []);
 
-    setRailLayouts((current) => {
-      const previous = current[section];
-      if (
-        previous &&
-        previous.x === next.x &&
-        previous.y === next.y &&
-        previous.width === next.width &&
-        previous.height === next.height
-      ) {
-        return current;
-      }
-      return { ...current, [section]: next };
-    });
+  const handleRailViewport = useCallback((event: LayoutChangeEvent) => {
+    railViewportWidth.current = event.nativeEvent.layout.width;
   }, []);
 
   useEffect(() => {
-    const target = railLayouts[activeSection];
-    if (target) {
-      railLens.moveTo(target);
+    if (!compact) {
+      return;
     }
-  }, [activeSection, railLayouts, railLens]);
+
+    const timer = setTimeout(() => {
+      const layout = railLayouts.current[activeSection];
+      const viewport = railViewportWidth.current;
+      if (!layout || viewport === 0) {
+        return;
+      }
+      const offset = layout.x + layout.width / 2 - viewport / 2;
+      railScrollRef.current?.scrollTo({ x: Math.max(offset, 0), animated: true });
+    }, 80);
+
+    return () => clearTimeout(timer);
+  }, [activeSection, compact]);
 
   const navLens = useGlassLens('y');
   const [groupOffsets, setGroupOffsets] = useState<Record<string, number>>({});
@@ -193,19 +211,18 @@ export function SideBar({ activeSection, onNavigate, collapsed, onToggleCollapse
         reflection
         sheen
         interaction={railInteraction}
-        style={[styles.mobileShell, { bottom: Math.max(safeAreaBottom, 10) + 10 }, MATCHA_SHADOW]}>
+        style={[styles.mobileShell, { bottom: Math.max(safeAreaBottom, 10) + 10 }, MATCHA_SHADOW_COMPACT]}>
         <ScrollView
+          ref={railScrollRef}
           horizontal
           showsHorizontalScrollIndicator={false}
+          onLayout={handleRailViewport}
           contentContainerStyle={styles.mobileScrollContent}>
-          <GlassLensView lens={railLens} radius={22} backgroundHint={DefaultTheme.colors.background} />
           {adminNavFlat.map((item) => (
-            <MobileNavChip
+            <MobileNavTab
               key={item.section}
               item={item}
               active={activeSection === item.section}
-              lens={railLens}
-              layout={railLayouts[item.section]}
               onLayout={(event) => registerRailLayout(item.section, event)}
               onPress={() => onNavigate(item.section)}
             />
@@ -316,50 +333,59 @@ export function SideBar({ activeSection, onNavigate, collapsed, onToggleCollapse
           </View>
         ))}
       </ScrollView>
+
+      {onSignOut && (
+        <View style={styles.footer}>
+          <GlowingButton
+            variant="ghost"
+            icon="signOut"
+            label="Sign out"
+            labelOpacity={labelOpacity}
+            iconOffsetX={iconShift}
+            accessibilityLabel="Sign out"
+            style={styles.navItem}
+            onPress={onSignOut}
+          />
+        </View>
+      )}
     </GlassPanel>
   );
 }
 
-function MobileNavChip({
+function MobileNavTab({
   item,
   active,
-  lens,
-  layout,
   onLayout,
   onPress,
 }: {
   item: AdminNavItem;
   active: boolean;
-  lens: GlassLensController;
-  layout?: GlassLensTarget;
   onLayout: (event: LayoutChangeEvent) => void;
   onPress: () => void;
 }) {
   const interaction = useGlassInteraction();
-  const magnify = useLensMagnify(lens, layout, 'x');
   const activeProgress = useRef(new Animated.Value(active ? 1 : 0)).current;
+  const [labelWidth, setLabelWidth] = useState(0);
 
   useEffect(() => {
     Animated.timing(activeProgress, {
       toValue: active ? 1 : 0,
-      duration: GlassMotion.travel.duration,
-      easing: GlassMotion.travel.easing,
+      duration: GlassMotion.morph.duration,
+      easing: GlassMotion.morph.easing,
       useNativeDriver: false,
     }).start();
   }, [active, activeProgress]);
 
-  const scale = useMemo(
-    () =>
-      Animated.multiply(
-        interaction.press.interpolate({ inputRange: [0, 1], outputRange: [1, 0.93] }),
-        magnify ?? 1,
-      ),
-    [interaction.press, magnify],
-  );
+  const measureLabel = useCallback((event: LayoutChangeEvent) => {
+    const measured = Math.ceil(event.nativeEvent.layout.width);
+    setLabelWidth((current) => (current === measured ? current : measured));
+  }, []);
+
+  const scale = interaction.press.interpolate({ inputRange: [0, 1], outputRange: [1, 0.93] });
 
   return (
     <Pressable
-      accessibilityRole="button"
+      accessibilityRole="tab"
       accessibilityLabel={item.label}
       accessibilityState={{ selected: active }}
       onLayout={onLayout}
@@ -367,35 +393,60 @@ function MobileNavChip({
       onHoverIn={interaction.handlers.onHoverIn}
       onHoverOut={interaction.handlers.onHoverOut}
       onPressIn={interaction.handlers.onPressIn}
-      onPressOut={interaction.handlers.onPressOut}
-      style={styles.mobileChip}>
-      <Animated.View style={[styles.mobileChipContent, { transform: [{ scale }] }]}>
-        <View style={styles.mobileChipIcon}>
+      onPressOut={interaction.handlers.onPressOut}>
+      <Animated.View
+        style={[
+          styles.mobileTab,
+          {
+            paddingHorizontal: activeProgress.interpolate({
+              inputRange: [0, 1],
+              outputRange: [TAB_PADDING, TAB_PADDING + 3],
+            }),
+            transform: [{ scale }],
+          },
+        ]}>
+        <Animated.View style={[styles.mobileTabPill, { opacity: activeProgress }]} pointerEvents="none">
+          <View style={styles.mobileTabTint} />
+          <GlassMaterial
+            variant="chip"
+            radius={DefaultTheme.radius.pill}
+            blurEnabled={false}
+            interaction={interaction}
+            sheen
+          />
+        </Animated.View>
+
+        <View style={styles.mobileTabIcon}>
           <Animated.View
             style={[
-              styles.mobileChipIconLayer,
+              styles.mobileTabIconLayer,
               { opacity: activeProgress.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }) },
             ]}>
-            <AppIcon name={item.icon} size={18} tintColor={DefaultTheme.colors.muted} />
+            <AppIcon name={item.icon} size={TAB_ICON_SIZE} tintColor={DefaultTheme.colors.muted} />
           </Animated.View>
-          <Animated.View style={[styles.mobileChipIconLayer, { opacity: activeProgress }]}>
-            <AppIcon name={item.icon} size={18} tintColor={DefaultTheme.colors.primary} />
+          <Animated.View style={[styles.mobileTabIconLayer, { opacity: activeProgress }]}>
+            <AppIcon name={item.icon} size={TAB_ICON_SIZE} tintColor={DefaultTheme.colors.primary} />
           </Animated.View>
         </View>
-        <Animated.Text
+
+        <Animated.View
           style={[
-            styles.mobileChipLabel,
-            {
-              color: activeProgress.interpolate({
-                inputRange: [0, 1],
-                outputRange: [DefaultTheme.colors.muted, DefaultTheme.colors.primary],
-              }),
-            },
-          ]}
-          numberOfLines={1}
-          maxFontSizeMultiplier={1.1}>
-          {item.label}
-        </Animated.Text>
+            styles.mobileTabLabelClip,
+            { width: Animated.multiply(activeProgress, labelWidth + TAB_LABEL_GAP) },
+          ]}>
+          <Animated.Text
+            style={[styles.mobileTabLabel, { width: labelWidth, opacity: activeProgress }]}
+            numberOfLines={1}
+            maxFontSizeMultiplier={1.1}>
+            {item.label}
+          </Animated.Text>
+        </Animated.View>
+
+        <View style={styles.mobileTabMeasure} pointerEvents="none">
+          <Text style={styles.mobileTabLabel} numberOfLines={1} onLayout={measureLabel}>
+            {item.label}
+          </Text>
+        </View>
       </Animated.View>
     </Pressable>
   );
@@ -467,48 +518,71 @@ const styles = StyleSheet.create({
     width: '100%',
     marginBottom: GlowingButtonGhostMetrics.spacing,
   },
+  footer: {
+    paddingTop: 10,
+    marginTop: 2,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.55)',
+  },
   mobileShell: {
     position: 'absolute',
     left: 12,
     right: 12,
     maxWidth: 560,
     alignSelf: 'center',
-    paddingVertical: 8,
+    paddingVertical: 7,
     borderRadius: 30,
     zIndex: 30,
   },
   mobileScrollContent: {
-    position: 'relative',
     flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 8,
     gap: 4,
   },
-  mobileChip: {
-    width: 68,
+  mobileTab: {
+    height: TAB_HEIGHT,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 4,
+    borderRadius: DefaultTheme.radius.pill,
   },
-  mobileChipContent: {
-    width: '100%',
+  mobileTabPill: {
+    ...StyleSheet.absoluteFill,
+    borderRadius: DefaultTheme.radius.pill,
+    overflow: 'hidden',
+  },
+  mobileTabTint: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(138, 153, 0, 0.13)',
+  },
+  mobileTabIcon: {
+    width: TAB_ICON_SIZE + 4,
+    height: TAB_ICON_SIZE + 4,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
   },
-  mobileChipIcon: {
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  mobileChipIconLayer: {
+  mobileTabIconLayer: {
     position: 'absolute',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  mobileChipLabel: {
+  mobileTabLabelClip: {
+    overflow: 'hidden',
+    justifyContent: 'center',
+    paddingLeft: TAB_LABEL_GAP,
+  },
+  mobileTabLabel: {
+    color: DefaultTheme.colors.primary,
     fontFamily: DefaultTheme.fonts.bodySemiBold,
-    fontSize: 9.5,
-    textAlign: 'center',
+    fontSize: 12,
+  },
+  mobileTabMeasure: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    width: 260,
+    flexDirection: 'row',
+    opacity: 0,
   },
 });

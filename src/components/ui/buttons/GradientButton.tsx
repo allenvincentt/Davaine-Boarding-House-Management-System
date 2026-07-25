@@ -14,10 +14,15 @@ import {
 import { DefaultTheme } from '@/constants/defaultTheme';
 import { Gradient } from '@/constants/gradient';
 
+export type GradientButtonVariant = 'pill' | 'fab';
+
+export const GradientButtonFabSize = 56;
+
 type GradientButtonProps = {
   children: ReactNode;
   onPress?: (event: GestureResponderEvent) => void;
   disabled?: boolean;
+  variant?: GradientButtonVariant;
   style?: StyleProp<ViewStyle>;
   accessibilityLabel?: string;
 };
@@ -33,9 +38,10 @@ const webGradientPressed: ViewStyle & { backgroundImage: string } = {
 };
 
 export const GradientButton = forwardRef<View, GradientButtonProps>(function GradientButton(
-  { children, onPress, disabled = false, style, accessibilityLabel },
+  { children, onPress, disabled = false, variant = 'pill', style, accessibilityLabel },
   ref,
 ) {
+  const fab = variant === 'fab';
   const scale = useRef(new Animated.Value(1)).current;
   const hoverProgress = useRef(new Animated.Value(0)).current;
   const pressProgress = useRef(new Animated.Value(0)).current;
@@ -73,6 +79,7 @@ export const GradientButton = forwardRef<View, GradientButtonProps>(function Gra
     <Animated.View
       style={[
         styles.root,
+        fab && styles.rootFab,
         style,
         disabled && styles.rootDisabled,
         { transform: [{ translateY: lift }, { scale }] },
@@ -149,6 +156,20 @@ const styles = StyleSheet.create({
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 11 },
     elevation: 6,
+  },
+  rootFab: {
+    position: 'absolute',
+    right: 20,
+    bottom: 24,
+    width: GradientButtonFabSize,
+    height: GradientButtonFabSize,
+    minHeight: GradientButtonFabSize,
+    paddingHorizontal: 0,
+    shadowOpacity: 0.3,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 9,
+    zIndex: 20,
   },
   rootDisabled: {
     opacity: 0.5,

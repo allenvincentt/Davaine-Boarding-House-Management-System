@@ -22,12 +22,12 @@ import { Select, type SelectAnchor, type SelectOption } from '@/components/ui/Se
 import { DefaultTheme } from '@/constants/defaultTheme';
 import { GlassMotion } from '@/constants/glassTheme';
 
-const MATCHA_SHADOW = {
-  shadowColor: DefaultTheme.colors.primary,
-  shadowOpacity: 0.09,
+const NEUTRAL_SHADOW = {
+  shadowColor: '#4D4E47',
+  shadowOpacity: 0.08,
   shadowRadius: 12,
   shadowOffset: { width: 0, height: 4 },
-  elevation: 6,
+  elevation: 4,
 };
 
 type TopBarProps = {
@@ -92,27 +92,31 @@ export function TopBar({
     [condenseProgress, compactProgress],
   );
 
+  const shape = compact
+    ? {
+        height: condenseProgress.interpolate({ inputRange: [0, 1], outputRange: [66, 54] }),
+        paddingHorizontal: condenseProgress.interpolate({ inputRange: [0, 1], outputRange: [14, 10] }),
+        borderRadius: condenseProgress.interpolate({ inputRange: [0, 1], outputRange: [34, 27] }),
+      }
+    : {
+        height: density.interpolate({ inputRange: [0, 1, 2], outputRange: [68, 61, 56] }),
+        paddingHorizontal: density.interpolate({ inputRange: [0, 1, 2], outputRange: [18, 15, 12] }),
+        borderRadius: condenseProgress.interpolate({
+          inputRange: [0, 1],
+          outputRange: [DefaultTheme.radius.lg, 34],
+        }),
+      };
+
   return (
     <GlassPanel
       variant="bar"
       backgroundHint={DefaultTheme.colors.background}
       reflection
       sheen
+      wash={compact}
       interaction={interaction}
       reflectionStyle={styles.reflection}
-      style={[
-        styles.root,
-        {
-          height: density.interpolate({ inputRange: [0, 1, 2], outputRange: [68, 61, 56] }),
-          paddingHorizontal: density.interpolate({ inputRange: [0, 1, 2], outputRange: [18, 15, 12] }),
-          borderRadius: condenseProgress.interpolate({
-            inputRange: [0, 1],
-            outputRange: [DefaultTheme.radius.lg, 34],
-          }),
-        },
-        MATCHA_SHADOW,
-        style,
-      ]}>
+      style={[styles.root, shape, !compact && NEUTRAL_SHADOW, style]}>
       <Animated.View
         style={[
           styles.search,
@@ -125,7 +129,12 @@ export function TopBar({
         />
       </Animated.View>
       <View style={styles.actions}>
-        <LiveClock showCaption={!compact} />
+        {!compact && (
+          <>
+            <LiveDate />
+            <LiveClock />
+          </>
+        )}
         <NotificationBell count={notificationCount} />
         <AdminMenu
           name={adminName}
@@ -141,32 +150,86 @@ export function TopBar({
   );
 }
 
-function LiveClock({ showCaption }: { showCaption: boolean }) {
+function useMinuteTick() {
   const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(timer);
+    let timer: ReturnType<typeof setTimeout>;
+
+    const untilNextMinute = (from: Date) => 60000 - (from.getSeconds() * 1000 + from.getMilliseconds());
+
+    const tick = () => {
+      const current = new Date();
+      setNow(current);
+      timer = setTimeout(tick, untilNextMinute(current));
+    };
+
+    timer = setTimeout(tick, untilNextMinute(new Date()));
+    return () => clearTimeout(timer);
   }, []);
 
-  const time = now.toLocaleTimeString('en-US', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: true,
+  return now;
+}
+
+function useSecondTick() {
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+
+    const untilNextSecond = (from: Date) => 1000 - from.getMilliseconds();
+
+    const tick = () => {
+      const current = new Date();
+      setNow(current);
+      timer = setTimeout(tick, untilNextSecond(current));
+    };
+
+    timer = setTimeout(tick, untilNextSecond(new Date()));
+    return () => clearTimeout(timer);
+  }, []);
+
+  return now;
+}
+
+function LiveDate() {
+  const now = useMinuteTick();
+
+  const date = now.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
   });
+  const weekday = now.toLocaleDateString('en-US', { weekday: 'long' });
+
+  return (
+    <View style={styles.date}>
+      <GlassMaterial variant="chip" radius={DefaultTheme.radius.sm} blurEnabled={false} wash={false} />
+      <Text style={styles.dateValue} numberOfLines={1}>
+        {date}
+      </Text>
+      <Text style={styles.dateCaption} numberOfLines={1}>
+        {weekday.toUpperCase()}
+      </Text>
+    </View>
+  );
+}
+
+function LiveClock() {
+  const now = useSecondTick();
+
+  const hours = now.getHours();
+  const meridiem = hours >= 12 ? 'PM' : 'AM';
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  const seconds = String(now.getSeconds()).padStart(2, '0');
+  const time = `${hours % 12 === 0 ? 12 : hours % 12}:${minutes}:${seconds} ${meridiem}`;
 
   return (
     <View style={styles.clock}>
-      <GlassMaterial variant="chip" radius={DefaultTheme.radius.sm} blurEnabled={false} />
-      <Text style={styles.clockTime} numberOfLines={1}>
+      <GlassMaterial variant="chip" radius={DefaultTheme.radius.sm} blurEnabled={false} wash={false} />
+      <Text style={styles.clockValue} numberOfLines={1}>
         {time}
       </Text>
-      {showCaption && (
-        <Text style={styles.clockCaption} numberOfLines={1}>
-          LOCAL TIME
-        </Text>
-      )}
     </View>
   );
 }
@@ -177,6 +240,7 @@ function NotificationBell({ count }: { count: number }) {
       accessibilityLabel="Notifications"
       variant="chip"
       radius={DefaultTheme.radius.pill}
+      wash={false}
       lift={1}
       flex={0.08}
       style={styles.bell}
@@ -321,20 +385,34 @@ const styles = StyleSheet.create({
     gap: 14,
     marginLeft: 'auto',
   },
-  clock: {
-    minWidth: 96,
+  date: {
+    minWidth: 116,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: DefaultTheme.radius.sm,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  clockTime: {
+  clock: {
+    minWidth: 118,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: DefaultTheme.radius.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dateValue: {
     color: DefaultTheme.colors.ink,
     fontFamily: DefaultTheme.fonts.bodyBold,
     fontSize: 13.5,
   },
-  clockCaption: {
+  clockValue: {
+    color: DefaultTheme.colors.ink,
+    fontFamily: DefaultTheme.fonts.bodyBold,
+    fontSize: 13.5,
+    fontVariant: ['tabular-nums'],
+  },
+  dateCaption: {
     marginTop: 1,
     color: DefaultTheme.colors.muted,
     fontFamily: DefaultTheme.fonts.bodySemiBold,

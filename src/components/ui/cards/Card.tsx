@@ -1,19 +1,33 @@
 import type { ReactNode } from 'react';
-import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Animated, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { DefaultTheme } from '@/constants/defaultTheme';
+import { useEntranceProgress } from '@/hooks/useEntranceAnimation';
+
+const REVEAL_DURATION = 760;
 
 type CardProps = {
   title?: string;
   subtitle?: string;
   action?: ReactNode;
   children?: ReactNode;
+  revealDelay?: number;
   style?: StyleProp<ViewStyle>;
 };
 
-export function Card({ title, subtitle, action, children, style }: CardProps) {
+export function Card({ title, subtitle, action, children, revealDelay, style }: CardProps) {
+  const reveal = useEntranceProgress(REVEAL_DURATION, revealDelay ?? 0, revealDelay !== undefined);
+
   return (
-    <View style={[styles.card, style]}>
+    <Animated.View
+      style={[
+        styles.card,
+        style,
+        revealDelay !== undefined && {
+          opacity: reveal,
+          transform: [{ translateY: reveal.interpolate({ inputRange: [0, 1], outputRange: [18, 0] }) }],
+        },
+      ]}>
       {(title || subtitle || action) && (
         <View style={styles.header}>
           <View style={styles.headerText}>
@@ -32,7 +46,7 @@ export function Card({ title, subtitle, action, children, style }: CardProps) {
         </View>
       )}
       {children}
-    </View>
+    </Animated.View>
   );
 }
 

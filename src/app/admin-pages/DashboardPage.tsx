@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View, type StyleProp, type TextStyle } from 'react-native';
 
 import { MainContentArea } from '@/components/layout/MainContentArea';
 import { Card } from '@/components/ui/cards/Card';
@@ -8,6 +8,7 @@ import { DonutChart } from '@/components/ui/charts/DonutChart';
 import { LineAreaChart } from '@/components/ui/charts/LineAreaChart';
 import { Table, type TableColumn } from '@/components/ui/Table';
 import { DefaultTheme } from '@/constants/defaultTheme';
+import { useCountUp } from '@/hooks/useEntranceAnimation';
 import { useAuth } from '@/providers/AuthProvider';
 
 type ActivityItem = {
@@ -58,32 +59,37 @@ type DuePaymentToday = {
   id: string;
   tenant: string;
   room: string;
-  amount: string;
+  amount: number;
 };
 
 const duePaymentsToday: DuePaymentToday[] = [
-  { id: 'd1', tenant: 'Maria Santos', room: 'Room 204', amount: '₱ 2,200' },
-  { id: 'd2', tenant: 'James Reyes', room: 'Room 107', amount: '₱ 1,800' },
-  { id: 'd3', tenant: 'Liza Cordero', room: 'Room 305', amount: '₱ 2,200' },
-  { id: 'd4', tenant: 'Noel Ferrer', room: 'Room 112', amount: '₱ 1,800' },
+  { id: 'd1', tenant: 'Maria Santos', room: 'Room 204', amount: 2200 },
+  { id: 'd2', tenant: 'James Reyes', room: 'Room 107', amount: 1800 },
+  { id: 'd3', tenant: 'Liza Cordero', room: 'Room 305', amount: 2200 },
+  { id: 'd4', tenant: 'Noel Ferrer', room: 'Room 112', amount: 1800 },
 ];
 
 type DuePaymentRow = {
   id: string;
   tenant: string;
   room: string;
-  amount: string;
+  amount: number;
   due: string;
   status: 'Due Today' | 'Due This Week' | 'Overdue';
 };
 
 const duePayments: DuePaymentRow[] = [
-  { id: 'p1', tenant: 'Maria Santos', room: '204', amount: '₱ 2,200', due: 'Jul 24', status: 'Due Today' },
-  { id: 'p2', tenant: 'James Reyes', room: '107', amount: '₱ 1,800', due: 'Jul 24', status: 'Due Today' },
-  { id: 'p3', tenant: 'Liza Cordero', room: '305', amount: '₱ 2,200', due: 'Jul 27', status: 'Due This Week' },
-  { id: 'p4', tenant: 'Noel Ferrer', room: '112', amount: '₱ 1,800', due: 'Jul 29', status: 'Due This Week' },
-  { id: 'p5', tenant: 'Anna Bautista', room: '208', amount: '₱ 2,000', due: 'Jul 18', status: 'Overdue' },
+  { id: 'p1', tenant: 'Maria Santos', room: '204', amount: 2200, due: 'Jul 24', status: 'Due Today' },
+  { id: 'p2', tenant: 'James Reyes', room: '107', amount: 1800, due: 'Jul 24', status: 'Due Today' },
+  { id: 'p3', tenant: 'Liza Cordero', room: '305', amount: 2200, due: 'Jul 27', status: 'Due This Week' },
+  { id: 'p4', tenant: 'Noel Ferrer', room: '112', amount: 1800, due: 'Jul 29', status: 'Due This Week' },
+  { id: 'p5', tenant: 'Anna Bautista', room: '208', amount: 2000, due: 'Jul 18', status: 'Overdue' },
 ];
+
+const AMOUNT_COUNT_DURATION = 950;
+const AMOUNT_STAGGER = 70;
+const DUE_TODAY_AMOUNT_DELAY = 820;
+const DUE_TABLE_AMOUNT_DELAY = 900;
 
 const duePaymentStatusColors: Record<DuePaymentRow['status'], { color: string; background: string }> = {
   'Due Today': { color: '#C98A1E', background: DefaultTheme.colors.softGold },
@@ -94,7 +100,18 @@ const duePaymentStatusColors: Record<DuePaymentRow['status'], { color: string; b
 const duePaymentColumns: TableColumn<DuePaymentRow>[] = [
   { key: 'tenant', header: 'Tenant', accessor: (row) => row.tenant },
   { key: 'room', header: 'Room', width: 64, accessor: (row) => row.room },
-  { key: 'amount', header: 'Amount', width: 90, accessor: (row) => row.amount },
+  {
+    key: 'amount',
+    header: 'Amount',
+    width: 90,
+    render: (row) => (
+      <AnimatedAmount
+        value={row.amount}
+        delay={DUE_TABLE_AMOUNT_DELAY + duePayments.indexOf(row) * AMOUNT_STAGGER}
+        style={styles.tableAmount}
+      />
+    ),
+  },
   { key: 'due', header: 'Due', width: 64, accessor: (row) => row.due },
   {
     key: 'status',
@@ -222,6 +239,7 @@ export default function DashboardPage() {
           title="Occupancy Trend"
           subtitle="6-month room usage overview"
           style={styles.trendCard}
+          revealDelay={540}
           action={
             <View style={styles.legendRow}>
               <LegendDot color={DefaultTheme.colors.primary} label="Occupied" />
@@ -238,20 +256,25 @@ export default function DashboardPage() {
           />
         </Card>
 
-        <Card title="Room Occupancy" subtitle="Current status breakdown" style={styles.occupancyCard}>
+        <Card
+          title="Room Occupancy"
+          subtitle="Current status breakdown"
+          style={styles.occupancyCard}
+          revealDelay={620}>
           <View style={styles.donutWrap}>
             <DonutChart
               segments={[
                 { value: 23, color: DefaultTheme.colors.primary },
                 { value: 2, color: DefaultTheme.colors.line },
               ]}
-              centerLabel="92%"
+              centerValue={92}
+              centerSuffix="%"
               centerCaption="Occupied"
             />
           </View>
           <View style={styles.occupancyStats}>
-            <OccupancyStat color={DefaultTheme.colors.primary} label="Occupied" value={23} />
-            <OccupancyStat color={DefaultTheme.colors.line} label="Available" value={2} />
+            <OccupancyStat color={DefaultTheme.colors.primary} label="Occupied" value={23} delay={700} />
+            <OccupancyStat color={DefaultTheme.colors.line} label="Available" value={2} delay={780} />
           </View>
         </Card>
       </View>
@@ -261,6 +284,7 @@ export default function DashboardPage() {
           title="Recent Activity"
           subtitle="Latest system events & updates"
           style={styles.activityCard}
+          revealDelay={700}
           action={<Text style={styles.viewAll}>View all</Text>}>
           {recentActivity.map((item, index) => (
             <View
@@ -288,7 +312,8 @@ export default function DashboardPage() {
         <Card
           title="Due Payments Today"
           subtitle={`${duePaymentsToday.length} tenants to collect from`}
-          style={styles.duePaymentsTodayCard}>
+          style={styles.duePaymentsTodayCard}
+          revealDelay={780}>
           {duePaymentsToday.map((entry, index) => (
             <View
               key={entry.id}
@@ -301,12 +326,20 @@ export default function DashboardPage() {
                   {entry.room}
                 </Text>
               </View>
-              <Text style={styles.dueTodayAmount}>{entry.amount}</Text>
+              <AnimatedAmount
+                value={entry.amount}
+                delay={DUE_TODAY_AMOUNT_DELAY + index * AMOUNT_STAGGER}
+                style={styles.dueTodayAmount}
+              />
             </View>
           ))}
         </Card>
 
-        <Card title="Due Payments" subtitle="Upcoming and overdue collections" style={styles.duePaymentsCard}>
+        <Card
+          title="Due Payments"
+          subtitle="Upcoming and overdue collections"
+          style={styles.duePaymentsCard}
+          revealDelay={860}>
           <Table
             columns={duePaymentColumns}
             data={duePayments}
@@ -319,6 +352,28 @@ export default function DashboardPage() {
   );
 }
 
+function formatPeso(value: number) {
+  return `₱ ${value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
+}
+
+function AnimatedAmount({
+  value,
+  delay = 0,
+  style,
+}: {
+  value: number;
+  delay?: number;
+  style?: StyleProp<TextStyle>;
+}) {
+  const counted = useCountUp(value, AMOUNT_COUNT_DURATION, delay);
+
+  return (
+    <Text style={style} numberOfLines={1}>
+      {formatPeso(counted)}
+    </Text>
+  );
+}
+
 function LegendDot({ color, label }: { color: string; label: string }) {
   return (
     <View style={styles.legendDotRow}>
@@ -328,14 +383,26 @@ function LegendDot({ color, label }: { color: string; label: string }) {
   );
 }
 
-function OccupancyStat({ color, label, value }: { color: string; label: string; value: number }) {
+function OccupancyStat({
+  color,
+  label,
+  value,
+  delay = 0,
+}: {
+  color: string;
+  label: string;
+  value: number;
+  delay?: number;
+}) {
+  const counted = useCountUp(value, 1000, delay);
+
   return (
     <View style={styles.occupancyStat}>
       <View style={styles.occupancyStatLabelRow}>
         <View style={[styles.legendDot, { backgroundColor: color }]} />
         <Text style={styles.occupancyStatLabel}>{label}</Text>
       </View>
-      <Text style={styles.occupancyStatValue}>{value}</Text>
+      <Text style={styles.occupancyStatValue}>{counted}</Text>
       <Text style={styles.occupancyStatCaption}>rooms</Text>
     </View>
   );
@@ -553,6 +620,11 @@ const styles = StyleSheet.create({
   dueTodayAmount: {
     color: DefaultTheme.colors.ink,
     fontFamily: DefaultTheme.fonts.bodyBold,
+    fontSize: 13,
+  },
+  tableAmount: {
+    color: DefaultTheme.colors.ink,
+    fontFamily: DefaultTheme.fonts.bodyMedium,
     fontSize: 13,
   },
   statusChip: {

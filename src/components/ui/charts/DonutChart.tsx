@@ -2,7 +2,12 @@ import { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 
+import { AnimatedCircle } from '@/components/ui/charts/AnimatedSvg';
 import { DefaultTheme } from '@/constants/defaultTheme';
+import { useCountUp, useEntranceProgress } from '@/hooks/useEntranceAnimation';
+
+const SWEEP_DURATION = 1150;
+const SWEEP_DELAY = 140;
 
 export type DonutSegment = {
   value: number;
@@ -15,6 +20,8 @@ type DonutChartProps = {
   strokeWidth?: number;
   trackColor?: string;
   centerLabel?: string;
+  centerValue?: number;
+  centerSuffix?: string;
   centerCaption?: string;
 };
 
@@ -24,22 +31,36 @@ export function DonutChart({
   strokeWidth = 20,
   trackColor = DefaultTheme.colors.line,
   centerLabel,
+  centerValue,
+  centerSuffix = '',
   centerCaption,
 }: DonutChartProps) {
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
   const total = segments.reduce((sum, segment) => sum + segment.value, 0);
 
+  const sweep = useEntranceProgress(SWEEP_DURATION, SWEEP_DELAY);
+  const counted = useCountUp(centerValue ?? 0, SWEEP_DURATION, SWEEP_DELAY, centerValue !== undefined);
+
   const arcs = useMemo(() => {
     let cumulative = 0;
-    return segments.map((segment) => {
-      const fraction = total > 0 ? segment.value / total : 0;
-      const dashArray = `${Math.max(fraction * circumference, 0)} ${circumference}`;
-      const dashOffset = -cumulative * circumference;
-      cumulative += fraction;
-      return { color: segment.color, dashArray, dashOffset };
-    });
+    return segments
+      .map((segment) => {
+        const fraction = total > 0 ? segment.value / total : 0;
+        const start = cumulative;
+        cumulative += fraction;
+        return {
+          color: segment.color,
+          length: fraction * circumference,
+          rotation: -90 + start * 360,
+          start,
+          end: cumulative,
+        };
+      })
+      .filter((arc) => arc.length > 0);
   }, [segments, total, circumference]);
+
+  const centerText = centerValue !== undefined ? `${counted}${centerSuffix}` : centerLabel;
 
   return (
     <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
@@ -53,24 +74,28 @@ export function DonutChart({
           fill="none"
         />
         {arcs.map((arc, index) => (
-          <Circle
+          <AnimatedCircle
             key={index}
             cx={size / 2}
             cy={size / 2}
             r={radius}
             stroke={arc.color}
             strokeWidth={strokeWidth}
-            strokeDasharray={arc.dashArray}
-            strokeDashoffset={arc.dashOffset}
+            strokeDasharray={`${arc.length} ${circumference}`}
+            strokeDashoffset={sweep.interpolate({
+              inputRange: [arc.start, arc.end],
+              outputRange: [arc.length, 0],
+              extrapolate: 'clamp',
+            })}
             strokeLinecap="round"
             fill="none"
-            transform={`rotate(-90 ${size / 2} ${size / 2})`}
+            transform={`rotate(${arc.rotation} ${size / 2} ${size / 2})`}
           />
         ))}
       </Svg>
-      {(centerLabel || centerCaption) && (
+      {(centerText || centerCaption) && (
         <View style={styles.center} pointerEvents="none">
-          {centerLabel && <Text style={styles.centerLabel}>{centerLabel}</Text>}
+          {centerText && <Text style={styles.centerLabel}>{centerText}</Text>}
           {centerCaption && <Text style={styles.centerCaption}>{centerCaption}</Text>}
         </View>
       )}
