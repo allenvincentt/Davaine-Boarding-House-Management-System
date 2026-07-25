@@ -10,11 +10,11 @@ export function useSignInFlow(onSuccess: () => void) {
   const [errorMessage, setErrorMessage] = useState('');
 
   const submit = useCallback(
-    async (email: string, password: string) => {
+    async (email: string, password: string, enableFingerprintSignIn: boolean) => {
       setStatus('submitting');
       setErrorMessage('');
       try {
-        await signIn(email, password);
+        await signIn(email, password, enableFingerprintSignIn);
         setStatus('success');
         onSuccess();
       } catch (error) {
@@ -33,7 +33,7 @@ export function useSignInFlow(onSuccess: () => void) {
       setStatus('success');
       onSuccess();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Unable to sign in with biometrics.');
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to sign in with fingerprint.');
       setStatus('error');
     }
   }, [signInWithBiometrics, onSuccess]);

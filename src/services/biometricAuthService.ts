@@ -2,7 +2,7 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
-export type BiometricKind = 'facial' | 'fingerprint' | 'iris' | 'generic';
+export type BiometricKind = 'fingerprint';
 
 const BIOMETRIC_REFRESH_TOKEN_KEY = 'davaine-biometric-refresh-token';
 
@@ -22,16 +22,10 @@ export async function getBiometricKind(): Promise<BiometricKind | null> {
 
   const types = await LocalAuthentication.supportedAuthenticationTypesAsync();
 
-  if (types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) {
-    return 'facial';
-  }
   if (types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) {
     return 'fingerprint';
   }
-  if (types.includes(LocalAuthentication.AuthenticationType.IRIS)) {
-    return 'iris';
-  }
-  return 'generic';
+  return null;
 }
 
 export async function authenticateWithBiometrics(promptMessage: string): Promise<boolean> {
@@ -61,17 +55,4 @@ export async function clearCachedBiometricRefreshToken(): Promise<void> {
     return;
   }
   await SecureStore.deleteItemAsync(BIOMETRIC_REFRESH_TOKEN_KEY);
-}
-
-export function supportsPlatformPasskey(): Promise<boolean> {
-  if (
-    Platform.OS !== 'web' ||
-    typeof window === 'undefined' ||
-    typeof window.PublicKeyCredential === 'undefined' ||
-    typeof window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable !== 'function'
-  ) {
-    return Promise.resolve(false);
-  }
-
-  return window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable().catch(() => false);
 }

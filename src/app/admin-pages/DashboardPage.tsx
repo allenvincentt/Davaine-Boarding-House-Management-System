@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { PageShell } from '@/components/layout/PageShell';
 import { MainContentArea } from '@/components/layout/MainContentArea';
 import { Card } from '@/components/ui/cards/Card';
 import { KPICard, KPICardsRow } from '@/components/ui/cards/KPICards';
@@ -138,8 +137,7 @@ export default function DashboardPage() {
   const adminName = profile?.fullName ?? 'Admin';
 
   return (
-    <PageShell>
-      <MainContentArea>
+    <MainContentArea>
       <View style={styles.greetingRow}>
         <View>
           <Text style={styles.greetingTitle}>
@@ -317,8 +315,7 @@ export default function DashboardPage() {
           />
         </Card>
       </View>
-      </MainContentArea>
-    </PageShell>
+    </MainContentArea>
   );
 }
 

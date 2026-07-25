@@ -1,8 +1,9 @@
 import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Easing,
+  Modal as RNModal,
   Pressable,
   StyleSheet,
   Text,
@@ -13,11 +14,23 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { DefaultTheme } from '@/constants/defaultTheme';
+import { GlassMotion, createGradientStyle } from '@/constants/glassTheme';
+import { Gradient } from '@/constants/gradient';
 import type { AppIconName } from '@/constants/icons';
 import { landingNavigation, type LandingSection } from '@/constants/landing';
 import { AppIcon } from '@/components/ui/AppIcon';
 import { BrandMark } from '@/components/ui/BrandMark';
-import { GlassPanel } from '@/components/ui/GlassPanel';
+import { SplashScreen } from '@/components/common/SplashScreen';
+import {
+  GlassLensView,
+  GlassMaterial,
+  GlassPanel,
+  useGlassInteraction,
+  useGlassLens,
+  useLensMagnify,
+  type GlassLensController,
+  type GlassLensTarget,
+} from '@/components/ui/GlassPanel';
 import { GradientButton } from '@/components/ui/buttons/GradientButton';
 import { ForgotPasswordModal } from '@/app/auth/ForgotPasswordModal';
 import { SignInModal } from '@/app/auth/SignInModal';
@@ -29,22 +42,41 @@ type NavBarProps = {
   scrollY: number;
 };
 
+type SectionLayouts = Partial<Record<LandingSection, GlassLensTarget>>;
+
+const indicatorGradient = createGradientStyle(Gradient.base);
+
 export function NavBar({ activeSection, onNavigate, scrollY }: NavBarProps) {
   const { width } = useWindowDimensions();
   const { top: safeAreaTop, bottom: safeAreaBottom } = useSafeAreaInsets();
   const router = useRouter();
-  const { session } = useAuth();
+  const { session, biometricAvailable, signInWithBiometrics } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const [signInOpen, setSignInOpen] = useState(false);
   const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
+  const [autoUnlocking, setAutoUnlocking] = useState(false);
 
-  const handleSignInPress = useCallback(() => {
+  const handleSignInPress = useCallback(async () => {
     if (session) {
       router.push('/admin-pages/DashboardPage');
       return;
     }
+
+    if (biometricAvailable) {
+      setAutoUnlocking(true);
+      try {
+        await signInWithBiometrics();
+        router.replace('/admin-pages/DashboardPage');
+        return;
+      } catch {
+        // Fall through to manual sign-in below.
+      } finally {
+        setAutoUnlocking(false);
+      }
+    }
+
     setSignInOpen(true);
-  }, [session, router]);
+  }, [session, router, biometricAvailable, signInWithBiometrics]);
 
   const handleForgotPassword = useCallback(() => {
     setSignInOpen(false);
@@ -55,16 +87,23 @@ export function NavBar({ activeSection, onNavigate, scrollY }: NavBarProps) {
     setForgotPasswordOpen(false);
     setSignInOpen(true);
   }, []);
+
   const indicatorX = useRef(new Animated.Value(0)).current;
   const indicatorWidth = useRef(new Animated.Value(0)).current;
-  const indicatorScale = useRef(new Animated.Value(1)).current;
-  const requestedIndicatorSection = useRef<LandingSection | null>(null);
-  const indicatorInitialized = useRef(false);
+  const indicatorReady = useRef(false);
   const previousScrollY = useRef(scrollY);
   const compactProgress = useRef(new Animated.Value(0)).current;
   const compactState = useRef(0);
-  const linkLayouts = useRef<Partial<Record<LandingSection, { x: number; width: number }>>>({});
+  const desktopMorph = useRef(new Animated.Value(0)).current;
+  const desktopMorphState = useRef(0);
   const compact = width < DefaultTheme.layout.compactNavigation;
+
+  const [desktopLayouts, setDesktopLayouts] = useState<SectionLayouts>({});
+  const [mobileLayouts, setMobileLayouts] = useState<SectionLayouts>({});
+  const desktopLens = useGlassLens('x');
+  const mobileLens = useGlassLens('x');
+  const shellInteraction = useGlassInteraction({ shimmerOnPress: false });
+  const railInteraction = useGlassInteraction({ shimmerOnPress: false });
 
   useEffect(() => {
     if (!compact) {
@@ -93,62 +132,131 @@ export function NavBar({ activeSection, onNavigate, scrollY }: NavBarProps) {
     }).start();
   }, [compact, scrollY, compactProgress]);
 
-  const transitionIndicator = useCallback(
-    (section: LandingSection) => {
-      const layout = linkLayouts.current[section];
-      if (!layout) {
-        return;
-      }
-
-      indicatorX.stopAnimation();
-      indicatorWidth.stopAnimation();
-      indicatorScale.stopAnimation();
-      indicatorX.setValue(layout.x);
-      indicatorWidth.setValue(layout.width);
-      indicatorScale.setValue(0);
-
-      Animated.timing(indicatorScale, {
-        toValue: 1,
-        duration: 620,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: false,
-      }).start();
-    },
-    [indicatorScale, indicatorWidth, indicatorX],
-  );
-
   useEffect(() => {
-    if (requestedIndicatorSection.current === activeSection) {
-      requestedIndicatorSection.current = null;
+    if (compact) {
       return;
     }
 
-    transitionIndicator(activeSection);
-  }, [activeSection, transitionIndicator]);
+    const nextState = scrollY > 18 ? 1 : 0;
+    if (nextState === desktopMorphState.current) {
+      return;
+    }
+
+    desktopMorphState.current = nextState;
+    Animated.timing(desktopMorph, {
+      toValue: nextState,
+      duration: GlassMotion.morph.duration,
+      easing: GlassMotion.morph.easing,
+      useNativeDriver: false,
+    }).start();
+    shellInteraction.triggerShimmer();
+  }, [compact, scrollY, desktopMorph, shellInteraction]);
+
+  useEffect(() => {
+    const target = mobileLayouts[activeSection];
+    if (target) {
+      mobileLens.moveTo(target);
+    }
+  }, [activeSection, mobileLayouts, mobileLens]);
+
+  useEffect(() => {
+    const target = desktopLayouts[activeSection];
+    if (!target) {
+      return;
+    }
+
+    desktopLens.moveTo(target);
+
+    if (!indicatorReady.current) {
+      indicatorReady.current = true;
+      indicatorX.setValue(target.x);
+      indicatorWidth.setValue(target.width);
+      return;
+    }
+
+    Animated.parallel([
+      Animated.timing(indicatorX, {
+        toValue: target.x,
+        duration: GlassMotion.travel.duration,
+        easing: GlassMotion.travel.easing,
+        useNativeDriver: false,
+      }),
+      Animated.timing(indicatorWidth, {
+        toValue: target.width,
+        duration: GlassMotion.travel.duration,
+        easing: GlassMotion.travel.easing,
+        useNativeDriver: false,
+      }),
+    ]).start();
+  }, [activeSection, desktopLayouts, desktopLens, indicatorX, indicatorWidth]);
+
+  useEffect(() => {
+    if (compact) {
+      railInteraction.triggerShimmer();
+    }
+  }, [activeSection, compact, railInteraction]);
 
   const navigate = (section: LandingSection) => {
-    requestedIndicatorSection.current = section;
-    transitionIndicator(section);
     onNavigate(section);
   };
 
-  const handleLinkLayout = (section: LandingSection, event: LayoutChangeEvent) => {
-    const { x, width: linkWidth } = event.nativeEvent.layout;
-    linkLayouts.current[section] = { x, width: linkWidth };
+  const registerDesktopLayout = useCallback((section: LandingSection, event: LayoutChangeEvent) => {
+    const { x, y, width: cellWidth, height } = event.nativeEvent.layout;
+    const next: GlassLensTarget = {
+      x: x - 14,
+      y: y + 13,
+      width: cellWidth + 28,
+      height: Math.max(height - 26, 26),
+    };
 
-    if (section === activeSection && !indicatorInitialized.current) {
-      indicatorX.setValue(x);
-      indicatorWidth.setValue(linkWidth);
-      indicatorScale.setValue(1);
-      indicatorInitialized.current = true;
-    }
-  };
+    setDesktopLayouts((current) => {
+      const previous = current[section];
+      if (
+        previous &&
+        previous.x === next.x &&
+        previous.y === next.y &&
+        previous.width === next.width &&
+        previous.height === next.height
+      ) {
+        return current;
+      }
+      return { ...current, [section]: next };
+    });
+  }, []);
+
+  const registerMobileLayout = useCallback((section: LandingSection, event: LayoutChangeEvent) => {
+    const { x, y, width: cellWidth, height } = event.nativeEvent.layout;
+    const next: GlassLensTarget = {
+      x,
+      y,
+      width: cellWidth,
+      height,
+    };
+
+    setMobileLayouts((current) => {
+      const previous = current[section];
+      if (
+        previous &&
+        previous.x === next.x &&
+        previous.y === next.y &&
+        previous.width === next.width &&
+        previous.height === next.height
+      ) {
+        return current;
+      }
+      return { ...current, [section]: next };
+    });
+  }, []);
 
   if (compact) {
     return (
       <>
         <GlassPanel
           variant="bar"
+          backgroundHint={DefaultTheme.colors.background}
+          reflection
+          sheen
+          interaction={shellInteraction}
           style={[
             styles.mobileTopShell,
             {
@@ -183,7 +291,10 @@ export function NavBar({ activeSection, onNavigate, scrollY }: NavBarProps) {
         </GlassPanel>
         <GlassPanel
           variant="floating"
+          backgroundHint={DefaultTheme.colors.background}
           reflection
+          sheen
+          interaction={railInteraction}
           style={[
             styles.mobileFloatingShell,
             {
@@ -205,12 +316,20 @@ export function NavBar({ activeSection, onNavigate, scrollY }: NavBarProps) {
             </View>
           </Pressable>
           <View style={styles.mobileLinks}>
+            <GlassLensView
+              lens={mobileLens}
+              radius={DefaultTheme.radius.lg}
+              backgroundHint={DefaultTheme.colors.background}
+            />
             {landingNavigation.map((link) => (
               <FloatingNavLink
                 key={link.section}
                 link={link}
                 active={activeSection === link.section}
                 compactProgress={compactProgress}
+                lens={mobileLens}
+                layout={mobileLayouts[link.section]}
+                onLayout={(event) => registerMobileLayout(link.section, event)}
                 onPress={() => navigate(link.section)}
               />
             ))}
@@ -227,13 +346,47 @@ export function NavBar({ activeSection, onNavigate, scrollY }: NavBarProps) {
         onClose={() => setForgotPasswordOpen(false)}
         onBackToSignIn={handleBackToSignIn}
       />
+      <RNModal visible={autoUnlocking} transparent={false} animationType="fade" statusBarTranslucent>
+        <SplashScreen status="loading" loadingMessage="Signing you in…" />
+      </RNModal>
       </>
     );
   }
 
   return (
-    <View style={[styles.shell, { paddingTop: safeAreaTop }] }>
-      <View style={styles.navbar}>
+    <Animated.View
+      style={[
+        styles.shell,
+        {
+          paddingTop: safeAreaTop,
+          paddingBottom: desktopMorph.interpolate({ inputRange: [0, 1], outputRange: [0, 10] }),
+          paddingHorizontal: desktopMorph.interpolate({ inputRange: [0, 1], outputRange: [0, 14] }),
+          backgroundColor: desktopMorph.interpolate({
+            inputRange: [0, 1],
+            outputRange: ['rgba(249, 247, 240, 1)', 'rgba(249, 247, 240, 0)'],
+          }),
+          borderBottomColor: desktopMorph.interpolate({
+            inputRange: [0, 1],
+            outputRange: ['rgba(231, 229, 221, 1)', 'rgba(231, 229, 221, 0)'],
+          }),
+        },
+      ]}>
+      <GlassPanel
+        variant="bar"
+        backgroundHint={DefaultTheme.colors.background}
+        reflection
+        sheen
+        interaction={shellInteraction}
+        presence={desktopMorph}
+        reflectionStyle={styles.desktopReflection}
+        style={[
+          styles.navbar,
+          {
+            height: desktopMorph.interpolate({ inputRange: [0, 1], outputRange: [66, 58] }),
+            paddingHorizontal: desktopMorph.interpolate({ inputRange: [0, 1], outputRange: [28, 22] }),
+            borderRadius: desktopMorph.interpolate({ inputRange: [0, 1], outputRange: [0, 30] }),
+          },
+        ]}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Go to Davaine home"
@@ -245,30 +398,32 @@ export function NavBar({ activeSection, onNavigate, scrollY }: NavBarProps) {
           <Text style={styles.brandName}>Davaine</Text>
         </Pressable>
 
-        {!compact && (
-          <View style={styles.links}>
-            {landingNavigation.map((link) => (
-              <AnimatedNavLink
-                key={link.section}
-                link={link}
-                active={activeSection === link.section}
-                onPress={() => navigate(link.section)}
-                onLayout={(event) => handleLinkLayout(link.section, event)}
-              />
-            ))}
-            <Animated.View
-              pointerEvents="none"
-              style={[
-                styles.activeIndicator,
-                {
-                  left: indicatorX,
-                  width: indicatorWidth,
-                  transform: [{ scaleX: indicatorScale }],
-                },
-              ]}
+        <View style={styles.links}>
+          <GlassLensView
+            lens={desktopLens}
+            radius={DefaultTheme.radius.pill}
+            backgroundHint={DefaultTheme.colors.background}
+          />
+          {landingNavigation.map((link) => (
+            <AnimatedNavLink
+              key={link.section}
+              link={link}
+              active={activeSection === link.section}
+              lens={desktopLens}
+              layout={desktopLayouts[link.section]}
+              onPress={() => navigate(link.section)}
+              onLayout={(event) => registerDesktopLayout(link.section, event)}
             />
-          </View>
-        )}
+          ))}
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.activeIndicator,
+              indicatorGradient,
+              { left: indicatorX, width: indicatorWidth },
+            ]}
+          />
+        </View>
 
         {compact ? (
           <Pressable style={styles.menuButton} onPress={() => setMenuOpen((current) => !current)}>
@@ -283,7 +438,7 @@ export function NavBar({ activeSection, onNavigate, scrollY }: NavBarProps) {
             <Text style={styles.signInArrow}>→</Text>
           </GradientButton>
         )}
-      </View>
+      </GlassPanel>
 
       {false && menuOpen && (
         <View style={styles.menu}>
@@ -292,6 +447,7 @@ export function NavBar({ activeSection, onNavigate, scrollY }: NavBarProps) {
               key={link.section}
               link={link}
               active={activeSection === link.section}
+              lens={desktopLens}
               menu
               onPress={() => navigate(link.section)}
             />
@@ -315,7 +471,10 @@ export function NavBar({ activeSection, onNavigate, scrollY }: NavBarProps) {
         onClose={() => setForgotPasswordOpen(false)}
         onBackToSignIn={handleBackToSignIn}
       />
-    </View>
+      <RNModal visible={autoUnlocking} transparent={false} animationType="fade" statusBarTranslucent>
+        <SplashScreen status="loading" loadingMessage="Signing you in…" />
+      </RNModal>
+    </Animated.View>
   );
 }
 
@@ -323,15 +482,22 @@ function FloatingNavLink({
   link,
   active,
   compactProgress,
+  lens,
+  layout,
+  onLayout,
   onPress,
 }: {
   link: (typeof landingNavigation)[number];
   active: boolean;
   compactProgress: Animated.Value;
+  lens: GlassLensController;
+  layout?: GlassLensTarget;
+  onLayout: (event: LayoutChangeEvent) => void;
   onPress: () => void;
 }) {
   const activeProgress = useRef(new Animated.Value(active ? 1 : 0)).current;
-  const pressProgress = useRef(new Animated.Value(0)).current;
+  const interaction = useGlassInteraction();
+  const magnify = useLensMagnify(lens, layout, 'x');
   const icon = ({
     home: 'home',
     rooms: 'rooms',
@@ -342,20 +508,20 @@ function FloatingNavLink({
   useEffect(() => {
     Animated.timing(activeProgress, {
       toValue: active ? 1 : 0,
-      duration: 420,
-      easing: Easing.out(Easing.cubic),
+      duration: GlassMotion.travel.duration,
+      easing: GlassMotion.travel.easing,
       useNativeDriver: false,
     }).start();
   }, [active, activeProgress]);
 
-  const animatePress = (toValue: number) => {
-    Animated.timing(pressProgress, {
-      toValue,
-      duration: 120,
-      easing: Easing.out(Easing.quad),
-      useNativeDriver: false,
-    }).start();
-  };
+  const scale = useMemo(
+    () =>
+      Animated.multiply(
+        interaction.press.interpolate({ inputRange: [0, 1], outputRange: [1, 0.94] }),
+        magnify ?? 1,
+      ),
+    [interaction.press, magnify],
+  );
 
   return (
     <Pressable
@@ -363,35 +529,14 @@ function FloatingNavLink({
       accessibilityState={{ selected: active }}
       accessibilityLabel={link.label}
       style={styles.mobileLink}
+      onLayout={onLayout}
       onPress={onPress}
-      onPressIn={() => animatePress(1)}
-      onPressOut={() => animatePress(0)}>
-      <Animated.View
-        style={[
-          styles.mobileLinkContent,
-          {
-            transform: [
-              {
-                scale: pressProgress.interpolate({ inputRange: [0, 1], outputRange: [1, 0.94] }),
-              },
-            ],
-          },
-        ]}>
+      onHoverIn={interaction.handlers.onHoverIn}
+      onHoverOut={interaction.handlers.onHoverOut}
+      onPressIn={interaction.handlers.onPressIn}
+      onPressOut={interaction.handlers.onPressOut}>
+      <Animated.View style={[styles.mobileLinkContent, { transform: [{ scale }] }]}>
         <View style={styles.mobileIconShell}>
-          <Animated.View
-            pointerEvents="none"
-            style={[
-              styles.mobileActiveBubble,
-              {
-                opacity: activeProgress,
-                transform: [
-                  {
-                    scale: activeProgress.interpolate({ inputRange: [0, 1], outputRange: [0.78, 1] }),
-                  },
-                ],
-              },
-            ]}
-          />
           <Animated.View
             style={[
               styles.mobileLinkIcon,
@@ -402,7 +547,7 @@ function FloatingNavLink({
             <AppIcon name={icon} size={19} tintColor={DefaultTheme.colors.muted} />
           </Animated.View>
           <Animated.View style={[styles.mobileLinkIcon, { opacity: activeProgress }]}>
-            <AppIcon name={icon} size={19} tintColor={DefaultTheme.colors.white} />
+            <AppIcon name={icon} size={19} tintColor={DefaultTheme.colors.primary} />
           </Animated.View>
         </View>
         <Animated.Text
@@ -438,54 +583,70 @@ function AnimatedNavLink({
   link,
   active,
   menu = false,
+  lens,
+  layout,
   onPress,
   onLayout,
 }: {
   link: (typeof landingNavigation)[number];
   active: boolean;
   menu?: boolean;
+  lens: GlassLensController;
+  layout?: GlassLensTarget;
   onPress: () => void;
   onLayout?: (event: LayoutChangeEvent) => void;
 }) {
   const activeProgress = useRef(new Animated.Value(active ? 1 : 0)).current;
-  const pressProgress = useRef(new Animated.Value(0)).current;
+  const interaction = useGlassInteraction();
+  const magnify = useLensMagnify(lens, layout, 'x');
 
   useEffect(() => {
     Animated.timing(activeProgress, {
       toValue: active ? 1 : 0,
-      duration: 220,
-      easing: Easing.out(Easing.cubic),
+      duration: GlassMotion.travel.duration,
+      easing: GlassMotion.travel.easing,
       useNativeDriver: false,
     }).start();
   }, [active, activeProgress]);
 
-  const animatePress = (toValue: number) => {
-    Animated.timing(pressProgress, {
-      toValue,
-      duration: 120,
-      easing: Easing.out(Easing.quad),
-      useNativeDriver: false,
-    }).start();
-  };
+  const scale = useMemo(
+    () =>
+      Animated.multiply(
+        interaction.press.interpolate({ inputRange: [0, 1], outputRange: [1, 0.96] }),
+        menu ? 1 : (magnify ?? 1),
+      ),
+    [interaction.press, magnify, menu],
+  );
 
   return (
     <Animated.View
       onLayout={onLayout}
-      style={[
-        menu ? styles.menuLinkWrap : styles.linkWrap,
-        {
-          transform: [
-            {
-              scale: pressProgress.interpolate({ inputRange: [0, 1], outputRange: [1, 0.96] }),
-            },
-          ],
-        },
-      ]}>
+      style={[menu ? styles.menuLinkWrap : styles.linkWrap, { transform: [{ scale }] }]}>
       <Pressable
         style={menu ? styles.menuLink : styles.link}
         onPress={onPress}
-        onPressIn={() => animatePress(1)}
-        onPressOut={() => animatePress(0)}>
+        onHoverIn={interaction.handlers.onHoverIn}
+        onHoverOut={interaction.handlers.onHoverOut}
+        onPressIn={interaction.handlers.onPressIn}
+        onPressOut={interaction.handlers.onPressOut}>
+        {!menu && (
+          <GlassMaterial
+            variant="chip"
+            radius={DefaultTheme.radius.pill}
+            blurEnabled={false}
+            interaction={interaction}
+            sheen
+            style={[
+              styles.linkLens,
+              {
+                opacity: interaction.energy.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0, 0.85],
+                }),
+              },
+            ]}
+          />
+        )}
         <Animated.Text
           style={[
             menu ? styles.menuLinkText : styles.linkText,
@@ -563,10 +724,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   mobileLinks: {
+    position: 'relative',
     flex: 1,
     width: '100%',
     flexDirection: 'row',
-    alignItems: 'stretch',
+    alignItems: 'center',
   },
   hiddenMobileBrand: {
     display: 'none',
@@ -575,28 +737,22 @@ const styles = StyleSheet.create({
     position: 'relative',
     flex: 1,
     minWidth: 0,
-    height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: DefaultTheme.radius.md,
+    paddingVertical: 3,
+    borderRadius: DefaultTheme.radius.lg,
   },
   mobileLinkContent: {
     width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 2,
   },
   mobileIconShell: {
     width: 38,
     height: 38,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  mobileActiveBubble: {
-    position: 'absolute',
-    width: 38,
-    height: 38,
-    borderRadius: DefaultTheme.radius.pill,
-    backgroundColor: DefaultTheme.colors.primary,
   },
   mobileLinkIcon: {
     position: 'absolute',
@@ -612,21 +768,21 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   shell: {
-    backgroundColor: DefaultTheme.colors.background,
     borderBottomWidth: 1,
-    borderBottomColor: DefaultTheme.colors.line,
     zIndex: 20,
   },
   navbar: {
     width: '100%',
     maxWidth: DefaultTheme.layout.contentWidth,
-    minHeight: 66,
-    paddingHorizontal: 28,
     alignSelf: 'center',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 18,
+  },
+  desktopReflection: {
+    left: 40,
+    right: 40,
   },
   brand: {
     flexDirection: 'row',
@@ -661,6 +817,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  linkLens: {
+    top: 13,
+    bottom: 13,
+    left: -14,
+    right: -14,
+  },
   linkText: {
     color: DefaultTheme.colors.muted,
     fontFamily: DefaultTheme.fonts.bodySemiBold,
@@ -669,9 +831,13 @@ const styles = StyleSheet.create({
   activeIndicator: {
     position: 'absolute',
     bottom: 12,
-    height: 2,
-    borderRadius: 2,
+    height: 2.5,
+    borderRadius: 3,
     backgroundColor: DefaultTheme.colors.primary,
+    shadowColor: DefaultTheme.colors.primary,
+    shadowOpacity: 0.55,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
   },
   signInButton: {
     minHeight: 42,

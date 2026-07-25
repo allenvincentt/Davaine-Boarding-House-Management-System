@@ -1,5 +1,3 @@
-import type { PasskeyListItem } from '@supabase/supabase-js';
-
 import { toAdminUserModel, type AdminUserModel, type AdminUserRow } from '@/models/adminUserModel';
 import { supabase } from '@/services/supabaseClient';
 
@@ -8,6 +6,13 @@ type MappableError = { message: string; code?: string } | null | undefined;
 export type SignInResult = {
   profile: AdminUserModel;
 };
+
+export class ExpiredBiometricSessionError extends Error {
+  constructor() {
+    super('Your saved sign-in expired. Sign in with your password to re-enable biometrics.');
+    this.name = 'ExpiredBiometricSessionError';
+  }
+}
 
 export async function signInAdmin(email: string, password: string): Promise<SignInResult> {
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
@@ -20,7 +25,7 @@ export async function signInAdmin(email: string, password: string): Promise<Sign
 }
 
 export async function signOutAdmin(): Promise<void> {
-  const { error } = await supabase.auth.signOut();
+  const { error } = await supabase.auth.signOut({ scope: 'global' });
   if (error) {
     throw new Error(error.message);
   }
@@ -78,46 +83,13 @@ export async function signInWithCachedBiometricSession(refreshToken: string): Pr
   const { data, error } = await supabase.auth.refreshSession({ refresh_token: refreshToken });
 
   if (error || !data.session) {
-    throw new Error(mapAuthError(error));
+    if (error?.name === 'AuthRetryableFetchError') {
+      throw new Error(mapAuthError(error));
+    }
+    throw new ExpiredBiometricSessionError();
   }
 
   return resolveAdminSession(data.session.user.id);
-}
-
-export async function signInWithPasskey(): Promise<SignInResult> {
-  const { data, error } = await supabase.auth.signInWithPasskey();
-
-  if (error || !data?.session) {
-    throw new Error(mapAuthError(error));
-  }
-
-  return resolveAdminSession(data.session.user.id);
-}
-
-export async function registerPasskey(): Promise<void> {
-  const { error } = await supabase.auth.registerPasskey();
-
-  if (error) {
-    throw new Error(mapAuthError(error));
-  }
-}
-
-export async function listPasskeys(): Promise<PasskeyListItem[]> {
-  const { data, error } = await supabase.auth.passkey.list();
-
-  if (error) {
-    throw new Error(mapAuthError(error));
-  }
-
-  return data ?? [];
-}
-
-export async function deletePasskey(passkeyId: string): Promise<void> {
-  const { error } = await supabase.auth.passkey.delete({ passkeyId });
-
-  if (error) {
-    throw new Error(mapAuthError(error));
-  }
 }
 
 async function resolveAdminSession(userId: string): Promise<SignInResult> {

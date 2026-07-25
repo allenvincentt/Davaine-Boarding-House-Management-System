@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Animated,
   Pressable,
   StyleSheet,
   Text,
@@ -10,10 +11,24 @@ import {
 } from 'react-native';
 
 import { AppIcon } from '@/components/ui/AppIcon';
-import { GlassPanel } from '@/components/ui/GlassPanel';
+import {
+  GlassMaterial,
+  GlassPanel,
+  GlassPressable,
+  useGlassInteraction,
+} from '@/components/ui/GlassPanel';
 import { SearchField } from '@/components/ui/SearchField';
 import { Select, type SelectAnchor, type SelectOption } from '@/components/ui/Select';
 import { DefaultTheme } from '@/constants/defaultTheme';
+import { GlassMotion } from '@/constants/glassTheme';
+
+const MATCHA_SHADOW = {
+  shadowColor: DefaultTheme.colors.primary,
+  shadowOpacity: 0.09,
+  shadowRadius: 12,
+  shadowOffset: { width: 0, height: 4 },
+  elevation: 6,
+};
 
 type TopBarProps = {
   searchValue: string;
@@ -21,6 +36,7 @@ type TopBarProps = {
   notificationCount?: number;
   adminName?: string;
   adminRole?: string;
+  scrollY?: number;
   onProfilePress?: () => void;
   onSignOut?: () => void;
   style?: StyleProp<ViewStyle>;
@@ -32,21 +48,82 @@ export function TopBar({
   notificationCount = 0,
   adminName = 'Admin',
   adminRole = 'Administrator',
+  scrollY = 0,
   onProfilePress,
   onSignOut,
   style,
 }: TopBarProps) {
   const { width } = useWindowDimensions();
   const compact = width < DefaultTheme.layout.compactNavigation;
+  const [menuOpen, setMenuOpen] = useState(false);
+  const interaction = useGlassInteraction({ shimmerOnPress: false });
+
+  const condenseProgress = useRef(new Animated.Value(0)).current;
+  const compactProgress = useRef(new Animated.Value(compact ? 1 : 0)).current;
+  const condenseState = useRef(0);
+
+  useEffect(() => {
+    const nextState = scrollY > 12 || menuOpen ? 1 : 0;
+    if (nextState === condenseState.current) {
+      return;
+    }
+
+    condenseState.current = nextState;
+    Animated.timing(condenseProgress, {
+      toValue: nextState,
+      duration: GlassMotion.morph.duration,
+      easing: GlassMotion.morph.easing,
+      useNativeDriver: false,
+    }).start();
+    interaction.triggerShimmer();
+  }, [scrollY, menuOpen, condenseProgress, interaction]);
+
+  useEffect(() => {
+    Animated.timing(compactProgress, {
+      toValue: compact ? 1 : 0,
+      duration: GlassMotion.morph.duration,
+      easing: GlassMotion.morph.easing,
+      useNativeDriver: false,
+    }).start();
+  }, [compact, compactProgress]);
+
+  const density = useMemo(
+    () => Animated.add(condenseProgress, compactProgress),
+    [condenseProgress, compactProgress],
+  );
 
   return (
-    <GlassPanel variant="bar" style={[styles.root, style]}>
-      <SearchField
-        value={searchValue}
-        onChangeText={onSearchChange}
-        placeholder={compact ? 'Search…' : 'Search rooms, tenants, bills…'}
-        style={styles.search}
-      />
+    <GlassPanel
+      variant="bar"
+      backgroundHint={DefaultTheme.colors.background}
+      reflection
+      sheen
+      interaction={interaction}
+      reflectionStyle={styles.reflection}
+      style={[
+        styles.root,
+        {
+          height: density.interpolate({ inputRange: [0, 1, 2], outputRange: [68, 61, 56] }),
+          paddingHorizontal: density.interpolate({ inputRange: [0, 1, 2], outputRange: [18, 15, 12] }),
+          borderRadius: condenseProgress.interpolate({
+            inputRange: [0, 1],
+            outputRange: [DefaultTheme.radius.lg, 34],
+          }),
+        },
+        MATCHA_SHADOW,
+        style,
+      ]}>
+      <Animated.View
+        style={[
+          styles.search,
+          { maxWidth: density.interpolate({ inputRange: [0, 1, 2], outputRange: [420, 372, 320] }) },
+        ]}>
+        <SearchField
+          value={searchValue}
+          onChangeText={onSearchChange}
+          placeholder={compact ? 'Search…' : 'Search rooms, tenants, bills…'}
+        />
+      </Animated.View>
       <View style={styles.actions}>
         <LiveClock showCaption={!compact} />
         <NotificationBell count={notificationCount} />
@@ -54,6 +131,8 @@ export function TopBar({
           name={adminName}
           role={adminRole}
           showDetails={!compact}
+          open={menuOpen}
+          onOpenChange={setMenuOpen}
           onProfilePress={onProfilePress}
           onSignOut={onSignOut}
         />
@@ -79,6 +158,7 @@ function LiveClock({ showCaption }: { showCaption: boolean }) {
 
   return (
     <View style={styles.clock}>
+      <GlassMaterial variant="chip" radius={DefaultTheme.radius.sm} blurEnabled={false} />
       <Text style={styles.clockTime} numberOfLines={1}>
         {time}
       </Text>
@@ -93,7 +173,14 @@ function LiveClock({ showCaption }: { showCaption: boolean }) {
 
 function NotificationBell({ count }: { count: number }) {
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel="Notifications" style={styles.bell}>
+    <GlassPressable
+      accessibilityLabel="Notifications"
+      variant="chip"
+      radius={DefaultTheme.radius.pill}
+      lift={1}
+      flex={0.08}
+      style={styles.bell}
+      contentStyle={styles.bellContent}>
       <AppIcon name="bell" size={19} tintColor={DefaultTheme.colors.muted} />
       {count > 0 && (
         <View style={styles.badge}>
@@ -102,7 +189,7 @@ function NotificationBell({ count }: { count: number }) {
           </Text>
         </View>
       )}
-    </Pressable>
+    </GlassPressable>
   );
 }
 
@@ -110,30 +197,34 @@ function AdminMenu({
   name,
   role,
   showDetails,
+  open,
+  onOpenChange,
   onProfilePress,
   onSignOut,
 }: {
   name: string;
   role: string;
   showDetails: boolean;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   onProfilePress?: () => void;
   onSignOut?: () => void;
 }) {
-  const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState<SelectAnchor | null>(null);
   const triggerRef = useRef<View>(null);
+  const interaction = useGlassInteraction();
   const nameParts = name.split(' ').filter(Boolean);
   const initials = (nameParts.length > 1 ? nameParts.slice(0, 2).map((part) => part[0]).join('') : name.slice(0, 2))
     .toUpperCase();
 
   const handleTogglePress = () => {
     if (open) {
-      setOpen(false);
+      onOpenChange(false);
       return;
     }
     triggerRef.current?.measureInWindow((x, y, width, height) => {
       setAnchor({ x, y, width, height });
-      setOpen(true);
+      onOpenChange(true);
     });
   };
 
@@ -148,31 +239,62 @@ function AdminMenu({
         ref={triggerRef}
         accessibilityRole="button"
         accessibilityLabel="Account menu"
+        accessibilityState={{ expanded: open }}
         style={styles.adminMenu}
-        onPress={handleTogglePress}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>{initials}</Text>
-        </View>
-        {showDetails && (
-          <View style={styles.adminText}>
-            <Text style={styles.adminName} numberOfLines={1}>
-              {name}
-            </Text>
-            <Text style={styles.adminRole} numberOfLines={1}>
-              {role}
-            </Text>
+        onPress={handleTogglePress}
+        onHoverIn={interaction.handlers.onHoverIn}
+        onHoverOut={interaction.handlers.onHoverOut}
+        onPressIn={interaction.handlers.onPressIn}
+        onPressOut={interaction.handlers.onPressOut}>
+        <Animated.View
+          style={[
+            styles.adminMenuContent,
+            {
+              transform: [
+                {
+                  scale: interaction.press.interpolate({ inputRange: [0, 1], outputRange: [1, 0.95] }),
+                },
+              ],
+            },
+          ]}>
+          <View style={styles.avatar}>
+            <GlassMaterial
+              variant="chip"
+              radius={DefaultTheme.radius.pill}
+              blurEnabled={false}
+              interaction={interaction}
+              sheen
+              bordered={false}
+            />
+            <Text style={styles.avatarText}>{initials}</Text>
           </View>
-        )}
-        {showDetails && (
-          <AppIcon
-            name="chevronDown"
-            size={14}
-            tintColor={DefaultTheme.colors.muted}
-            style={open && styles.chevronOpen}
-          />
-        )}
+          {showDetails && (
+            <View style={styles.adminText}>
+              <Text style={styles.adminName} numberOfLines={1}>
+                {name}
+              </Text>
+              <Text style={styles.adminRole} numberOfLines={1}>
+                {role}
+              </Text>
+            </View>
+          )}
+          {showDetails && (
+            <AppIcon
+              name="chevronDown"
+              size={14}
+              tintColor={DefaultTheme.colors.muted}
+              style={open && styles.chevronOpen}
+            />
+          )}
+        </Animated.View>
       </Pressable>
-      <Select visible={open} onClose={() => setOpen(false)} options={menuOptions} anchor={anchor} align="right" />
+      <Select
+        visible={open}
+        onClose={() => onOpenChange(false)}
+        options={menuOptions}
+        anchor={anchor}
+        align="right"
+      />
     </View>
   );
 }
@@ -182,14 +304,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
-    height: 68,
     paddingHorizontal: 18,
     borderRadius: DefaultTheme.radius.lg,
     zIndex: 50,
   },
+  reflection: {
+    left: 30,
+    right: 30,
+  },
   search: {
     flex: 1,
-    maxWidth: 420,
   },
   actions: {
     flexDirection: 'row',
@@ -202,10 +326,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: DefaultTheme.radius.sm,
-    borderWidth: 1,
-    borderColor: DefaultTheme.colors.line,
-    backgroundColor: DefaultTheme.colors.cool,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   clockTime: {
     color: DefaultTheme.colors.ink,
@@ -223,9 +345,12 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: DefaultTheme.radius.pill,
+  },
+  bellContent: {
+    width: '100%',
+    height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: DefaultTheme.colors.cool,
   },
   badge: {
     position: 'absolute',
@@ -252,6 +377,10 @@ const styles = StyleSheet.create({
   adminMenu: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  adminMenuContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
   },
   avatar: {
@@ -260,6 +389,7 @@ const styles = StyleSheet.create({
     borderRadius: DefaultTheme.radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
     backgroundColor: DefaultTheme.colors.primary,
   },
   avatarText: {

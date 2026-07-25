@@ -1,6 +1,5 @@
-import type { PasskeyListItem } from '@supabase/supabase-js';
-import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppIcon } from '@/components/ui/AppIcon';
 import { MatchaButton } from '@/components/ui/buttons/MatchaButton';
@@ -22,68 +21,19 @@ const ROLE_LABELS: Record<AdminUserRole, string> = {
   [AdminUserRole.Admin]: 'Administrator',
 };
 
-const BIOMETRIC_KIND_LABEL: Record<BiometricKind, string> = {
-  facial: 'Face ID',
-  fingerprint: 'Fingerprint',
-  iris: 'Iris ID',
-  generic: 'Biometrics',
-};
-
-const BIOMETRIC_KIND_ICON: Record<BiometricKind, AppIconName> = {
-  facial: 'faceId',
-  fingerprint: 'fingerprint',
-  iris: 'fingerprint',
-  generic: 'passkey',
-};
-
 export function UserProfileModal({ visible, onClose }: UserProfileModalProps) {
-  const {
-    profile,
-    biometricKind,
-    biometricSignInEnabled,
-    passkeySupported,
-    enableBiometricSignIn,
-    disableBiometricSignIn,
-    listPasskeys,
-    registerPasskey,
-    deletePasskey,
-  } = useAuth();
+  const { profile, biometricKind, biometricSignInEnabled, enableBiometricSignIn, disableBiometricSignIn } =
+    useAuth();
 
   const [biometricBusy, setBiometricBusy] = useState(false);
   const [biometricError, setBiometricError] = useState('');
 
-  const [passkeys, setPasskeys] = useState<PasskeyListItem[]>([]);
-  const [passkeysLoading, setPasskeysLoading] = useState(false);
-  const [passkeyBusy, setPasskeyBusy] = useState(false);
-  const [passkeyError, setPasskeyError] = useState('');
-
-  const busy = biometricBusy || passkeyBusy;
-
-  const refreshPasskeys = useCallback(async () => {
-    setPasskeysLoading(true);
-    setPasskeyError('');
-    try {
-      const items = await listPasskeys();
-      setPasskeys(items);
-    } catch (error) {
-      setPasskeyError(error instanceof Error ? error.message : 'Unable to load passkeys.');
-    } finally {
-      setPasskeysLoading(false);
-    }
-  }, [listPasskeys]);
-
-  useEffect(() => {
-    if (visible && Platform.OS === 'web' && passkeySupported) {
-      refreshPasskeys();
-    }
-  }, [visible, passkeySupported, refreshPasskeys]);
-
   const handleClose = useCallback(() => {
-    if (busy) {
+    if (biometricBusy) {
       return;
     }
     onClose();
-  }, [busy, onClose]);
+  }, [biometricBusy, onClose]);
 
   const handleToggleBiometric = useCallback(async () => {
     setBiometricBusy(true);
@@ -95,40 +45,11 @@ export function UserProfileModal({ visible, onClose }: UserProfileModalProps) {
         await enableBiometricSignIn();
       }
     } catch (error) {
-      setBiometricError(error instanceof Error ? error.message : 'Unable to update biometric sign-in.');
+      setBiometricError(error instanceof Error ? error.message : 'Unable to update fingerprint sign-in.');
     } finally {
       setBiometricBusy(false);
     }
   }, [biometricSignInEnabled, enableBiometricSignIn, disableBiometricSignIn]);
-
-  const handleAddPasskey = useCallback(async () => {
-    setPasskeyBusy(true);
-    setPasskeyError('');
-    try {
-      await registerPasskey();
-      await refreshPasskeys();
-    } catch (error) {
-      setPasskeyError(error instanceof Error ? error.message : 'Unable to register a passkey.');
-    } finally {
-      setPasskeyBusy(false);
-    }
-  }, [registerPasskey, refreshPasskeys]);
-
-  const handleRemovePasskey = useCallback(
-    async (passkeyId: string) => {
-      setPasskeyBusy(true);
-      setPasskeyError('');
-      try {
-        await deletePasskey(passkeyId);
-        await refreshPasskeys();
-      } catch (error) {
-        setPasskeyError(error instanceof Error ? error.message : 'Unable to remove that passkey.');
-      } finally {
-        setPasskeyBusy(false);
-      }
-    },
-    [deletePasskey, refreshPasskeys],
-  );
 
   const roleLabel = profile ? ROLE_LABELS[profile.userRole] : '—';
 
@@ -136,7 +57,7 @@ export function UserProfileModal({ visible, onClose }: UserProfileModalProps) {
     <Modal
       visible={visible}
       onClose={handleClose}
-      dismissOnBackdropPress={!busy}
+      dismissOnBackdropPress={!biometricBusy}
       contentStyle={styles.modalContent}>
       <View style={styles.header}>
         <Text style={styles.title}>My Profile</Text>
@@ -158,33 +79,14 @@ export function UserProfileModal({ visible, onClose }: UserProfileModalProps) {
           <InfoRow icon="directory" label="User Role" value={roleLabel} isLast />
         </Card>
 
-        <Card
-          title="Biometric Sign-In"
-          subtitle={
-            Platform.OS === 'web'
-              ? 'Manage passkeys for this account'
-              : 'Unlock the app with Face ID or your fingerprint'
-          }
-          style={styles.card}>
-          {Platform.OS === 'web' ? (
-            <WebPasskeySection
-              supported={passkeySupported}
-              loading={passkeysLoading}
-              busy={passkeyBusy}
-              passkeys={passkeys}
-              error={passkeyError}
-              onAdd={handleAddPasskey}
-              onRemove={handleRemovePasskey}
-            />
-          ) : (
-            <NativeBiometricSection
-              kind={biometricKind}
-              enabled={biometricSignInEnabled}
-              busy={biometricBusy}
-              error={biometricError}
-              onToggle={handleToggleBiometric}
-            />
-          )}
+        <Card title="Fingerprint Sign-In" subtitle="Unlock the app with your fingerprint" style={styles.card}>
+          <NativeBiometricSection
+            kind={biometricKind}
+            enabled={biometricSignInEnabled}
+            busy={biometricBusy}
+            error={biometricError}
+            onToggle={handleToggleBiometric}
+          />
         </Card>
       </View>
     </Modal>
@@ -231,23 +133,21 @@ function NativeBiometricSection({
   onToggle: () => void;
 }) {
   if (kind == null) {
-    return <Text style={styles.mutedNote}>Biometric sign-in isn&apos;t available on this device.</Text>;
+    return <Text style={styles.mutedNote}>Fingerprint sign-in isn&apos;t available on this device.</Text>;
   }
-
-  const kindLabel = BIOMETRIC_KIND_LABEL[kind];
 
   return (
     <View>
       <View style={styles.statusRow}>
-        <AppIcon name={BIOMETRIC_KIND_ICON[kind]} size={18} tintColor={DefaultTheme.colors.primary} />
+        <AppIcon name="fingerprint" size={18} tintColor={DefaultTheme.colors.primary} />
         <Text style={styles.statusText}>
-          {enabled ? `${kindLabel} sign-in is enabled` : `${kindLabel} sign-in is off`}
+          {enabled ? 'Fingerprint sign-in is enabled' : 'Fingerprint sign-in is off'}
         </Text>
       </View>
       {!!error && <Text style={styles.errorText}>{error}</Text>}
       <MatchaButton
-        label={busy ? 'Please wait…' : enabled ? `Disable ${kindLabel}` : `Enable ${kindLabel}`}
-        icon={BIOMETRIC_KIND_ICON[kind]}
+        label={busy ? 'Please wait…' : enabled ? 'Disable Fingerprint' : 'Enable Fingerprint'}
+        icon="fingerprint"
         variant={enabled ? 'outline' : 'solid'}
         disabled={busy}
         onPress={onToggle}
@@ -255,76 +155,6 @@ function NativeBiometricSection({
       />
     </View>
   );
-}
-
-function WebPasskeySection({
-  supported,
-  loading,
-  busy,
-  passkeys,
-  error,
-  onAdd,
-  onRemove,
-}: {
-  supported: boolean;
-  loading: boolean;
-  busy: boolean;
-  passkeys: PasskeyListItem[];
-  error: string;
-  onAdd: () => void;
-  onRemove: (passkeyId: string) => void;
-}) {
-  if (!supported) {
-    return <Text style={styles.mutedNote}>This browser doesn&apos;t support passkeys on this device.</Text>;
-  }
-
-  return (
-    <View>
-      {loading ? (
-        <ActivityIndicator color={DefaultTheme.colors.primary} />
-      ) : passkeys.length === 0 ? (
-        <Text style={styles.mutedNote}>No passkeys registered yet.</Text>
-      ) : (
-        passkeys.map((passkey, index) => (
-          <View
-            key={passkey.id}
-            style={[styles.passkeyRow, index < passkeys.length - 1 && styles.infoRowDivider]}>
-            <View style={styles.infoIcon}>
-              <AppIcon name="passkey" size={16} tintColor={DefaultTheme.colors.primary} />
-            </View>
-            <View style={styles.infoText}>
-              <Text style={styles.infoValue} numberOfLines={1}>
-                {passkey.friendly_name || 'Passkey'}
-              </Text>
-              <Text style={styles.infoLabel}>Added {formatDate(passkey.created_at)}</Text>
-            </View>
-            <Pressable
-              onPress={() => onRemove(passkey.id)}
-              disabled={busy}
-              accessibilityRole="button"
-              accessibilityLabel={`Remove ${passkey.friendly_name || 'passkey'}`}
-              hitSlop={8}
-              style={styles.removeButton}>
-              <AppIcon name="close" size={14} tintColor="#D64545" />
-            </Pressable>
-          </View>
-        ))
-      )}
-      {!!error && <Text style={styles.errorText}>{error}</Text>}
-      <MatchaButton
-        label={busy ? 'Please wait…' : 'Add a Passkey'}
-        icon="passkey"
-        variant="outline"
-        disabled={busy}
-        onPress={onAdd}
-        style={styles.actionButton}
-      />
-    </View>
-  );
-}
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
 const styles = StyleSheet.create({
@@ -419,17 +249,5 @@ const styles = StyleSheet.create({
   actionButton: {
     marginTop: 14,
     alignSelf: 'flex-start',
-  },
-  passkeyRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 10,
-  },
-  removeButton: {
-    width: 28,
-    height: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 });

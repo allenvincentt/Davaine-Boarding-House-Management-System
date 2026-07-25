@@ -67,9 +67,8 @@ export const appIcons = {
     web: 'logout',
   },
   warning: { ios: 'exclamationmark.triangle.fill', android: 'warning', web: 'warning' },
-  faceId: { ios: 'faceid', android: 'face', web: 'face' },
+  check: { ios: 'checkmark', android: 'check', web: 'check' },
   fingerprint: { ios: 'touchid', android: 'fingerprint', web: 'fingerprint' },
-  passkey: { ios: 'key.fill', android: 'password', web: 'password' },
 } satisfies Record<string, PlatformIcon>;
 
 export type AppIconName = keyof typeof appIcons;

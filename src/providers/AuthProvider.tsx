@@ -1,4 +1,4 @@
-import type { PasskeyListItem, Session } from '@supabase/supabase-js';
+import type { Session } from '@supabase/supabase-js';
 import {
   createContext,
   useCallback,
@@ -9,19 +9,16 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 
 import type { AdminUserModel } from '@/models/adminUserModel';
 import {
+  ExpiredBiometricSessionError,
   confirmPasswordReset,
-  deletePasskey,
   fetchAdminProfile,
-  listPasskeys,
-  registerPasskey,
   requestPasswordReset,
   signInAdmin,
   signInWithCachedBiometricSession,
-  signInWithPasskey,
   signOutAdmin,
 } from '@/services/authService';
 import {
@@ -30,7 +27,6 @@ import {
   clearCachedBiometricRefreshToken,
   getBiometricKind,
   getCachedBiometricRefreshToken,
-  supportsPlatformPasskey,
   type BiometricKind,
 } from '@/services/biometricAuthService';
 import { supabase } from '@/services/supabaseClient';
@@ -41,20 +37,18 @@ type AuthContextValue = {
   initializing: boolean;
   initError: string | null;
   retryInitialization: () => void;
-  signIn: (email: string, password: string) => Promise<void>;
+  signIn: (email: string, password: string, enableFingerprintSignIn?: boolean) => Promise<void>;
   signOut: () => Promise<void>;
   requestPasswordReset: (email: string) => Promise<void>;
   confirmPasswordReset: (email: string, code: string, newPassword: string) => Promise<void>;
   biometricKind: BiometricKind | null;
   biometricAvailable: boolean;
   biometricSignInEnabled: boolean;
-  passkeySupported: boolean;
   signInWithBiometrics: () => Promise<void>;
+  locked: boolean;
+  unlockWithBiometrics: () => Promise<void>;
   enableBiometricSignIn: () => Promise<void>;
   disableBiometricSignIn: () => Promise<void>;
-  listPasskeys: () => Promise<PasskeyListItem[]>;
-  registerPasskey: () => Promise<void>;
-  deletePasskey: (passkeyId: string) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -66,20 +60,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [initError, setInitError] = useState<string | null>(null);
   const [biometricKind, setBiometricKind] = useState<BiometricKind | null>(null);
   const [hasCachedBiometricSession, setHasCachedBiometricSession] = useState(false);
-  const [passkeySupported, setPasskeySupported] = useState(false);
+  const [locked, setLocked] = useState(false);
   const activeRef = useRef(true);
+  const biometricEnabledRef = useRef(false);
+  const sessionRef = useRef<Session | null>(null);
+  const appStateRef = useRef(AppState.currentState);
 
   useEffect(() => {
-    Promise.all([getBiometricKind(), getCachedBiometricRefreshToken(), supportsPlatformPasskey()]).then(
-      ([kind, cachedToken, passkey]) => {
-        if (!activeRef.current) {
-          return;
+    biometricEnabledRef.current = hasCachedBiometricSession;
+  }, [hasCachedBiometricSession]);
+
+  useEffect(() => {
+    sessionRef.current = session;
+  }, [session]);
+
+  useEffect(() => {
+    Promise.all([getBiometricKind(), getCachedBiometricRefreshToken()]).then(([kind, cachedToken]) => {
+      if (!activeRef.current) {
+        return;
+      }
+      setBiometricKind(kind);
+      setHasCachedBiometricSession(cachedToken != null);
+      biometricEnabledRef.current = cachedToken != null;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      return;
+    }
+
+    const subscription = AppState.addEventListener('change', (state) => {
+      const previousState = appStateRef.current;
+      appStateRef.current = state;
+
+      if (state === 'active') {
+        supabase.auth.startAutoRefresh();
+        if (previousState === 'background' && sessionRef.current && biometricEnabledRef.current) {
+          setLocked(true);
         }
-        setBiometricKind(kind);
-        setHasCachedBiometricSession(cachedToken != null);
-        setPasskeySupported(passkey);
-      },
-    );
+      } else {
+        supabase.auth.stopAutoRefresh();
+      }
+    });
+
+    return () => subscription.remove();
   }, []);
 
   const initialize = useCallback(async () => {
@@ -124,6 +149,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       setSession(nextSession);
       if (nextSession) {
+        if (biometricEnabledRef.current && nextSession.refresh_token) {
+          cacheBiometricRefreshToken(nextSession.refresh_token).catch(() => undefined);
+        }
         fetchAdminProfile(nextSession.user.id)
           .then((nextProfile) => {
             if (activeRef.current) {
@@ -153,23 +181,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       initializing,
       initError,
       retryInitialization: initialize,
-      signIn: async (email: string, password: string) => {
+      signIn: async (email: string, password: string, enableFingerprintSignIn = false) => {
         const { profile: nextProfile } = await signInAdmin(email, password);
         setProfile(nextProfile);
+        setLocked(false);
 
-        if (Platform.OS !== 'web' && biometricKind != null) {
+        if (enableFingerprintSignIn && Platform.OS !== 'web' && biometricKind === 'fingerprint') {
           const { data } = await supabase.auth.getSession();
           if (data.session?.refresh_token) {
             await cacheBiometricRefreshToken(data.session.refresh_token);
             setHasCachedBiometricSession(true);
+            biometricEnabledRef.current = true;
           }
         }
       },
       signOut: async () => {
         await signOutAdmin();
-        setProfile(null);
         await clearCachedBiometricRefreshToken();
         setHasCachedBiometricSession(false);
+        biometricEnabledRef.current = false;
+        setProfile(null);
+        setLocked(false);
       },
       requestPasswordReset: async (email: string) => {
         await requestPasswordReset(email);
@@ -178,66 +210,73 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await confirmPasswordReset(email, code, newPassword);
       },
       biometricKind,
-      biometricAvailable:
-        Platform.OS === 'web' ? passkeySupported : biometricKind != null && hasCachedBiometricSession,
+      biometricAvailable: Platform.OS !== 'web' && biometricKind === 'fingerprint' && hasCachedBiometricSession,
       biometricSignInEnabled: hasCachedBiometricSession,
-      passkeySupported,
       signInWithBiometrics: async () => {
-        if (Platform.OS === 'web') {
-          const { profile: nextProfile } = await signInWithPasskey();
-          setProfile(nextProfile);
-          return;
-        }
-
         const cachedToken = await getCachedBiometricRefreshToken();
         if (!cachedToken) {
-          throw new Error('No saved sign-in found for biometrics. Sign in with your password first.');
+          setHasCachedBiometricSession(false);
+          biometricEnabledRef.current = false;
+          throw new Error('No saved sign-in found for fingerprint sign-in. Sign in with your password first.');
         }
 
         const authenticated = await authenticateWithBiometrics('Sign in to Davaine');
         if (!authenticated) {
-          throw new Error('Biometric authentication was not completed.');
+          throw new Error('Fingerprint authentication was not completed.');
         }
 
-        const { profile: nextProfile } = await signInWithCachedBiometricSession(cachedToken);
-        setProfile(nextProfile);
+        try {
+          const { profile: nextProfile } = await signInWithCachedBiometricSession(cachedToken);
+          setProfile(nextProfile);
+          setLocked(false);
+        } catch (error) {
+          if (error instanceof ExpiredBiometricSessionError) {
+            await clearCachedBiometricRefreshToken();
+            setHasCachedBiometricSession(false);
+            biometricEnabledRef.current = false;
+          }
+          throw error;
+        }
+
+        const { data } = await supabase.auth.getSession();
+        if (data.session?.refresh_token) {
+          await cacheBiometricRefreshToken(data.session.refresh_token);
+        }
+      },
+      locked,
+      unlockWithBiometrics: async () => {
+        const authenticated = await authenticateWithBiometrics('Unlock Davaine');
+        if (!authenticated) {
+          throw new Error('Fingerprint authentication was not completed.');
+        }
+        setLocked(false);
       },
       enableBiometricSignIn: async () => {
-        if (Platform.OS === 'web' || biometricKind == null) {
-          throw new Error('Biometric sign-in is not available on this device.');
+        if (Platform.OS === 'web' || biometricKind !== 'fingerprint') {
+          throw new Error('Fingerprint sign-in is not available on this device.');
         }
 
-        const authenticated = await authenticateWithBiometrics('Enable biometric sign-in');
+        const authenticated = await authenticateWithBiometrics('Enable fingerprint sign-in');
         if (!authenticated) {
-          throw new Error('Biometric authentication was not completed.');
+          throw new Error('Fingerprint authentication was not completed.');
         }
 
         const { data } = await supabase.auth.getSession();
         if (!data.session?.refresh_token) {
-          throw new Error('No active session to enable biometrics for.');
+          throw new Error('No active session to enable fingerprint sign-in for.');
         }
 
         await cacheBiometricRefreshToken(data.session.refresh_token);
         setHasCachedBiometricSession(true);
+        biometricEnabledRef.current = true;
       },
       disableBiometricSignIn: async () => {
         await clearCachedBiometricRefreshToken();
         setHasCachedBiometricSession(false);
+        biometricEnabledRef.current = false;
       },
-      listPasskeys: () => listPasskeys(),
-      registerPasskey: () => registerPasskey(),
-      deletePasskey: (passkeyId: string) => deletePasskey(passkeyId),
     }),
-    [
-      session,
-      profile,
-      initializing,
-      initError,
-      initialize,
-      biometricKind,
-      hasCachedBiometricSession,
-      passkeySupported,
-    ],
+    [session, profile, initializing, initError, initialize, biometricKind, hasCachedBiometricSession, locked],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

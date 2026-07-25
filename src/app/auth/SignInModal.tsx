@@ -6,12 +6,11 @@ import { ActivityIndicator, Modal as RNModal, Platform, Pressable, StyleSheet, T
 import { SplashScreen } from '@/components/common/SplashScreen';
 import { AppIcon } from '@/components/ui/AppIcon';
 import { Input } from '@/components/ui/Input';
+import { GlowingButton } from '@/components/ui/buttons/GlowingButton';
 import { GradientButton } from '@/components/ui/buttons/GradientButton';
-import { MatchaButton } from '@/components/ui/buttons/MatchaButton';
 import { Modal } from '@/components/ui/modals/Modal';
 import { DefaultTheme } from '@/constants/defaultTheme';
 import { Gradient } from '@/constants/gradient';
-import type { AppIconName } from '@/constants/icons';
 import { useSignInFlow } from '@/hooks/useSignInFlow';
 import { useAuth } from '@/providers/AuthProvider';
 
@@ -32,15 +31,9 @@ const webHeroGradient: ViewStyle & { backgroundImage: string } = {
   backgroundImage: Gradient.base,
 };
 
-const BIOMETRIC_COPY: Record<'facial' | 'fingerprint' | 'other', { label: string; icon: AppIconName }> = {
-  facial: { label: 'Sign in with Face ID', icon: 'faceId' },
-  fingerprint: { label: 'Sign in with Fingerprint', icon: 'fingerprint' },
-  other: { label: 'Sign in with Passkey', icon: 'passkey' },
-};
-
 export function SignInModal({ visible, onClose, onForgotPassword }: SignInModalProps) {
   const router = useRouter();
-  const { biometricKind, biometricAvailable } = useAuth();
+  const { biometricKind, biometricAvailable, biometricSignInEnabled } = useAuth();
   const handleSignedIn = useCallback(() => {
     router.replace('/admin-pages/DashboardPage');
   }, [router]);
@@ -49,24 +42,16 @@ export function SignInModal({ visible, onClose, onForgotPassword }: SignInModalP
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [enableFingerprintSignIn, setEnableFingerprintSignIn] = useState(false);
 
-  const biometricCopy = useMemo(() => {
-    if (Platform.OS === 'web') {
-      return BIOMETRIC_COPY.other;
-    }
-    if (biometricKind === 'facial') {
-      return BIOMETRIC_COPY.facial;
-    }
-    if (biometricKind === 'fingerprint') {
-      return BIOMETRIC_COPY.fingerprint;
-    }
-    return BIOMETRIC_COPY.other;
-  }, [biometricKind]);
+  const canOfferFingerprintEnrollment =
+    Platform.OS !== 'web' && biometricKind === 'fingerprint' && !biometricSignInEnabled;
 
   const resetForm = useCallback(() => {
     setEmail('');
     setPassword('');
     setFieldErrors({});
+    setEnableFingerprintSignIn(false);
   }, []);
 
   const handleClose = useCallback(() => {
@@ -108,8 +93,12 @@ export function SignInModal({ visible, onClose, onForgotPassword }: SignInModalP
       return;
     }
 
-    submit(email.trim(), password);
-  }, [email, password, submit]);
+    submit(email.trim(), password, enableFingerprintSignIn);
+  }, [email, password, enableFingerprintSignIn, submit]);
+
+  const handleToggleEnableFingerprint = useCallback(() => {
+    setEnableFingerprintSignIn((current) => !current);
+  }, []);
 
   const handleBiometricSignIn = useCallback(() => {
     if (isSubmitting) {
@@ -121,7 +110,10 @@ export function SignInModal({ visible, onClose, onForgotPassword }: SignInModalP
   const signInLabel = useMemo(
     () =>
       isSubmitting ? (
-        <ActivityIndicator color={DefaultTheme.colors.white} />
+        <>
+          <Text style={styles.signInLabel}>Signing In…</Text>
+          <ActivityIndicator color={DefaultTheme.colors.white} />
+        </>
       ) : (
         <>
           <Text style={styles.signInLabel}>Sign In</Text>
@@ -167,13 +159,10 @@ export function SignInModal({ visible, onClose, onForgotPassword }: SignInModalP
 
           {biometricAvailable && (
             <>
-              <MatchaButton
-                label={biometricCopy.label}
-                icon={biometricCopy.icon}
-                variant="outline"
-                disabled={isSubmitting}
+              <GlowingButton
+                label="Sign in with Fingerprint"
                 onPress={handleBiometricSignIn}
-                style={styles.biometricButton}
+                style={[styles.biometricButton, isSubmitting && styles.biometricButtonDisabled]}
               />
               <View style={styles.dividerRow}>
                 <View style={styles.dividerLine} />
@@ -208,6 +197,23 @@ export function SignInModal({ visible, onClose, onForgotPassword }: SignInModalP
             onSubmitEditing={handleSubmit}
             style={styles.field}
           />
+
+          {canOfferFingerprintEnrollment && (
+            <Pressable
+              onPress={handleToggleEnableFingerprint}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: enableFingerprintSignIn }}
+              accessibilityLabel="Enable Fingerprint Sign In Next Time"
+              hitSlop={8}
+              style={styles.fingerprintRow}>
+              <View style={[styles.checkbox, enableFingerprintSignIn && styles.checkboxChecked]}>
+                {enableFingerprintSignIn && (
+                  <AppIcon name="check" size={11} tintColor={DefaultTheme.colors.white} />
+                )}
+              </View>
+              <Text style={styles.fingerprintLabel}>Enable Fingerprint Sign In Next Time</Text>
+            </Pressable>
+          )}
 
           {status === 'error' && <Text style={styles.generalError}>{errorMessage}</Text>}
 
@@ -300,6 +306,34 @@ const styles = StyleSheet.create({
     marginTop: 26,
     marginHorizontal: 8,
     alignSelf: 'stretch',
+  },
+  biometricButtonDisabled: {
+    opacity: 0.5,
+  },
+  fingerprintRow: {
+    marginTop: 16,
+    marginHorizontal: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+  },
+  checkbox: {
+    width: 18,
+    height: 18,
+    borderRadius: 5,
+    borderWidth: 1.5,
+    borderColor: DefaultTheme.colors.line,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxChecked: {
+    backgroundColor: DefaultTheme.colors.primary,
+    borderColor: DefaultTheme.colors.primary,
+  },
+  fingerprintLabel: {
+    color: DefaultTheme.colors.muted,
+    fontFamily: DefaultTheme.fonts.bodyMedium,
+    fontSize: 12.5,
   },
   dividerRow: {
     marginTop: 20,

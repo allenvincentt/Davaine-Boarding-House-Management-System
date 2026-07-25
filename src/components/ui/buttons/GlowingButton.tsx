@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import {
   Animated,
   Easing,
@@ -6,6 +6,7 @@ import {
   Pressable,
   StyleSheet,
   View,
+  type AccessibilityState,
   type GestureResponderEvent,
   type LayoutChangeEvent,
   type PointerEvent,
@@ -14,13 +15,27 @@ import {
   type ViewStyle,
 } from 'react-native';
 
+import { AppIcon } from '@/components/ui/AppIcon';
 import { DefaultTheme } from '@/constants/defaultTheme';
+import type { AppIconName } from '@/constants/icons';
+
+type GlowingButtonVariant = 'solid' | 'ghost';
+
+type AnimatedNumber = Animated.AnimatedInterpolation<number> | Animated.Value | number;
 
 type GlowingButtonProps = {
   label: string;
   onPress?: (event: GestureResponderEvent) => void;
   style?: StyleProp<ViewStyle>;
   textStyle?: StyleProp<TextStyle>;
+  variant?: GlowingButtonVariant;
+  icon?: AppIconName;
+  active?: boolean;
+  labelOpacity?: AnimatedNumber;
+  iconOffsetX?: AnimatedNumber;
+  accessibilityLabel?: string;
+  accessibilityState?: AccessibilityState;
+  onLayout?: (event: LayoutChangeEvent) => void;
 };
 
 const glowSize = 132;
@@ -29,14 +44,72 @@ const webGlowStyle: ViewStyle & { backgroundImage: string } = {
     'radial-gradient(circle, rgba(250,255,204,0.98) 0%, rgba(206,217,104,0.58) 24%, rgba(138,153,0,0.22) 48%, rgba(138,153,0,0) 72%)',
 };
 
-export function GlowingButton({ label, onPress, style, textStyle }: GlowingButtonProps) {
+export const GlowingButtonGhostMetrics = {
+  height: 44,
+  paddingHorizontal: 12,
+  gap: 12,
+  iconSlot: 22,
+  iconSize: 18,
+  spacing: 4,
+} as const;
+
+const SOLID_EMPHASIS_COLOR = '#5F6C00';
+
+export function GlowingButton({
+  label,
+  onPress,
+  style,
+  textStyle,
+  variant = 'solid',
+  icon,
+  active = false,
+  labelOpacity,
+  iconOffsetX,
+  accessibilityLabel,
+  accessibilityState,
+  onLayout,
+}: GlowingButtonProps) {
+  const ghost = variant === 'ghost';
+  const restColor = ghost ? DefaultTheme.colors.muted : DefaultTheme.colors.primary;
+  const emphasisColor = ghost ? DefaultTheme.colors.primary : SOLID_EMPHASIS_COLOR;
+
   const scale = useRef(new Animated.Value(1)).current;
   const hoverProgress = useRef(new Animated.Value(0)).current;
+  const activeProgress = useRef(new Animated.Value(active ? 1 : 0)).current;
   const pointerX = useRef(new Animated.Value(-glowSize)).current;
   const pointerY = useRef(new Animated.Value(-glowSize)).current;
   const hovered = useRef(false);
   const focused = useRef(false);
   const pressing = useRef(false);
+
+  useEffect(() => {
+    Animated.timing(activeProgress, {
+      toValue: active ? 1 : 0,
+      duration: 320,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [active, activeProgress]);
+
+  const emphasis = useMemo(
+    () =>
+      Animated.add(hoverProgress, activeProgress).interpolate({
+        inputRange: [0, 1],
+        outputRange: [0, 1],
+        extrapolate: 'clamp',
+      }),
+    [hoverProgress, activeProgress],
+  );
+
+  const glowOpacity = useMemo(
+    () =>
+      Animated.add(hoverProgress, Animated.multiply(activeProgress, 0.45)).interpolate({
+        inputRange: [0, 1],
+        outputRange: [0, 1],
+        extrapolate: 'clamp',
+      }),
+    [hoverProgress, activeProgress],
+  );
 
   const animateHover = (toValue: number, duration = toValue === 1 ? 180 : 360) => {
     hoverProgress.stopAnimation();
@@ -93,64 +166,116 @@ export function GlowingButton({ label, onPress, style, textStyle }: GlowingButto
 
   return (
     <Animated.View
+      onLayout={onLayout}
       style={[
         styles.shell,
+        ghost && styles.shellGhost,
         style,
         {
-          shadowOpacity: hoverProgress.interpolate({ inputRange: [0, 1], outputRange: [0.13, 0.25] }),
+          shadowOpacity: emphasis.interpolate({
+            inputRange: [0, 1],
+            outputRange: ghost ? [0, 0.18] : [0.13, 0.25],
+          }),
           transform: [
             {
-              translateY: hoverProgress.interpolate({ inputRange: [0, 1], outputRange: [0, -2] }),
+              translateY: hoverProgress.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0, ghost ? -1 : -2],
+              }),
             },
             { scale },
           ],
         },
       ]}>
-      <View style={styles.surface} onLayout={centerGlow}>
+      <Animated.View
+        style={[
+          styles.surface,
+          ghost && styles.surfaceGhost,
+          ghost && {
+            backgroundColor: hoverProgress.interpolate({
+              inputRange: [0, 1],
+              outputRange: ['rgba(255,255,255,0)', 'rgba(255,255,255,0.45)'],
+            }),
+          },
+        ]}
+        onLayout={centerGlow}>
         <Animated.View
           style={[
             styles.glow,
             Platform.OS === 'web' && webGlowStyle,
             {
-              opacity: hoverProgress,
+              opacity: glowOpacity,
               transform: [{ translateX: pointerX }, { translateY: pointerY }],
             },
           ]}
         />
-        <View style={styles.reflection} />
-        <View style={styles.labelWrap}>
-          <Animated.Text
-            accessible={false}
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.8}
-            maxFontSizeMultiplier={1.2}
-            style={[
-              styles.label,
-              {
-                color: hoverProgress.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [DefaultTheme.colors.primary, '#5F6C00'],
-                }),
-                textShadowColor: hoverProgress.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: ['rgba(138,153,0,0)', 'rgba(138,153,0,0.28)'],
-                }),
-                textShadowRadius: hoverProgress.interpolate({ inputRange: [0, 1], outputRange: [0, 6] }),
-                transform: [
-                  {
-                    scale: hoverProgress.interpolate({ inputRange: [0, 1], outputRange: [1, 1.035] }),
-                  },
-                ],
-              },
-              textStyle,
-            ]}>
-            {label}
-          </Animated.Text>
+        <Animated.View style={[styles.reflection, ghost && { opacity: activeProgress }]} />
+        <View style={[styles.content, ghost && styles.contentGhost]}>
+          {icon && (
+            <Animated.View
+              style={[styles.iconSlot, { transform: [{ translateX: iconOffsetX ?? 0 }] }]}>
+              <Animated.View
+                style={[
+                  styles.iconLayer,
+                  { opacity: emphasis.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }) },
+                ]}>
+                <AppIcon
+                  name={icon}
+                  size={GlowingButtonGhostMetrics.iconSize}
+                  tintColor={restColor}
+                />
+              </Animated.View>
+              <Animated.View style={[styles.iconLayer, { opacity: emphasis }]}>
+                <AppIcon
+                  name={icon}
+                  size={GlowingButtonGhostMetrics.iconSize}
+                  tintColor={emphasisColor}
+                />
+              </Animated.View>
+            </Animated.View>
+          )}
+          <View style={[styles.labelWrap, ghost && styles.labelWrapGhost]}>
+            <Animated.Text
+              accessible={false}
+              numberOfLines={1}
+              adjustsFontSizeToFit={!ghost}
+              minimumFontScale={0.8}
+              maxFontSizeMultiplier={1.2}
+              style={[
+                styles.label,
+                ghost && styles.labelGhost,
+                {
+                  opacity: labelOpacity ?? 1,
+                  color: emphasis.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [restColor, emphasisColor],
+                  }),
+                  textShadowColor: emphasis.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: ['rgba(138,153,0,0)', 'rgba(138,153,0,0.28)'],
+                  }),
+                  textShadowRadius: emphasis.interpolate({ inputRange: [0, 1], outputRange: [0, 6] }),
+                  transform: ghost
+                    ? []
+                    : [
+                        {
+                          scale: hoverProgress.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [1, 1.035],
+                          }),
+                        },
+                      ],
+                },
+                textStyle,
+              ]}>
+              {label}
+            </Animated.Text>
+          </View>
         </View>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={label}
+          accessibilityLabel={accessibilityLabel ?? label}
+          accessibilityState={accessibilityState}
           onPress={onPress}
           onPointerMove={followPointer}
           onPointerEnter={() => {
@@ -186,7 +311,7 @@ export function GlowingButton({ label, onPress, style, textStyle }: GlowingButto
           }}
           style={styles.pressable}
         />
-      </View>
+      </Animated.View>
     </Animated.View>
   );
 }
@@ -201,6 +326,13 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
     elevation: 3,
   },
+  shellGhost: {
+    minHeight: GlowingButtonGhostMetrics.height,
+    height: GlowingButtonGhostMetrics.height,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 0,
+  },
   surface: {
     flex: 1,
     minHeight: 54,
@@ -211,6 +343,12 @@ const styles = StyleSheet.create({
     backgroundColor: DefaultTheme.colors.white,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  surfaceGhost: {
+    minHeight: GlowingButtonGhostMetrics.height,
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+    alignItems: 'stretch',
   },
   glow: {
     position: 'absolute',
@@ -233,15 +371,48 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.92)',
     pointerEvents: 'none',
   },
+  content: {
+    zIndex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    pointerEvents: 'none',
+  },
+  contentGhost: {
+    flex: 1,
+    justifyContent: 'flex-start',
+    paddingHorizontal: GlowingButtonGhostMetrics.paddingHorizontal,
+    gap: GlowingButtonGhostMetrics.gap,
+  },
+  iconSlot: {
+    width: GlowingButtonGhostMetrics.iconSlot,
+    height: GlowingButtonGhostMetrics.iconSlot,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconLayer: {
+    position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   labelWrap: {
     zIndex: 1,
     pointerEvents: 'none',
+  },
+  labelWrapGhost: {
+    flex: 1,
   },
   label: {
     fontFamily: DefaultTheme.fonts.bodyBold,
     fontSize: 14,
     letterSpacing: 0.1,
     textShadowOffset: { width: 0, height: 2 },
+  },
+  labelGhost: {
+    fontFamily: DefaultTheme.fonts.bodySemiBold,
+    fontSize: 13.5,
+    letterSpacing: 0.1,
+    textAlign: 'left',
   },
   pressable: {
     position: 'absolute',
