@@ -11,7 +11,7 @@ function browserStore(): Storage | null {
   }
 }
 
-export const authSessionStorage = {
+const keyValueStorage = {
   async getItem(key: string): Promise<string | null> {
     if (Platform.OS === 'web') {
       const store = browserStore();
@@ -44,3 +44,6 @@ export const authSessionStorage = {
     await AsyncStorage.removeItem(key);
   },
 };
+
+export const authSessionStorage = keyValueStorage;
+export const appStorage = keyValueStorage;

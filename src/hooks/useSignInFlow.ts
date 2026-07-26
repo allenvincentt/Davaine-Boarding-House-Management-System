@@ -1,10 +1,11 @@
 import { useCallback, useState } from 'react';
 
+import type { AdminUserModel } from '@/models/adminUserModel';
 import { useAuth } from '@/providers/AuthProvider';
 
 export type SignInFlowStatus = 'idle' | 'submitting' | 'success' | 'error';
 
-export function useSignInFlow(onSuccess: () => void) {
+export function useSignInFlow(onSuccess: (profile: AdminUserModel) => void) {
   const { signIn, signInWithBiometrics } = useAuth();
   const [status, setStatus] = useState<SignInFlowStatus>('idle');
   const [errorMessage, setErrorMessage] = useState('');
@@ -14,9 +15,9 @@ export function useSignInFlow(onSuccess: () => void) {
       setStatus('submitting');
       setErrorMessage('');
       try {
-        await signIn(email, password, enableFingerprintSignIn);
+        const profile = await signIn(email, password, enableFingerprintSignIn);
         setStatus('success');
-        onSuccess();
+        onSuccess(profile);
       } catch (error) {
         setErrorMessage(error instanceof Error ? error.message : 'Unable to sign in.');
         setStatus('error');
@@ -29,9 +30,9 @@ export function useSignInFlow(onSuccess: () => void) {
     setStatus('submitting');
     setErrorMessage('');
     try {
-      await signInWithBiometrics();
+      const profile = await signInWithBiometrics();
       setStatus('success');
-      onSuccess();
+      onSuccess(profile);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Unable to sign in with fingerprint.');
       setStatus('error');

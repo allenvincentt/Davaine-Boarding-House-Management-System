@@ -4,9 +4,10 @@ import { BiometricLockScreen } from '@/components/common/BiometricLockScreen';
 import { SplashScreen } from '@/components/common/SplashScreen';
 import { PageShell } from '@/components/layout/PageShell';
 import { useAuth } from '@/providers/AuthProvider';
+import { canAccessAdminArea } from '@/services/accessControl';
 
 export default function AdminLayout() {
-  const { session, initializing, initError, retryInitialization, locked } = useAuth();
+  const { session, profile, initializing, initError, retryInitialization, locked } = useAuth();
 
   if (initializing) {
     return <SplashScreen status="loading" loadingMessage="Checking your session…" />;
@@ -24,6 +25,10 @@ export default function AdminLayout() {
   }
 
   if (!session) {
+    return <Redirect href="/" />;
+  }
+
+  if (profile && !canAccessAdminArea(profile.userRole)) {
     return <Redirect href="/" />;
   }
 

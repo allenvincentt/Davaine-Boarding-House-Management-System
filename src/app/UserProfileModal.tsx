@@ -1,39 +1,150 @@
-import { useCallback, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppIcon } from '@/components/ui/AppIcon';
 import { MatchaButton } from '@/components/ui/buttons/MatchaButton';
 import { Card } from '@/components/ui/cards/Card';
+import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/modals/Modal';
 import { DefaultTheme } from '@/constants/defaultTheme';
 import type { AppIconName } from '@/constants/icons';
-import { AdminUserRole } from '@/enums/adminUserRoleEnum';
 import { useAuth } from '@/providers/AuthProvider';
+import { roleLabel } from '@/services/accessControl';
 import type { BiometricKind } from '@/services/biometricAuthService';
+import {
+  changeOwnPassword,
+  fetchPasswordFingerprint,
+  updateOwnProfile,
+} from '@/services/userManagementService';
 
 type UserProfileModalProps = {
   visible: boolean;
   onClose: () => void;
 };
 
-const ROLE_LABELS: Record<AdminUserRole, string> = {
-  [AdminUserRole.SuperAdmin]: 'Super Admin',
-  [AdminUserRole.Admin]: 'Administrator',
-};
+const FINGERPRINT_PREVIEW_LENGTH = 40;
 
 export function UserProfileModal({ visible, onClose }: UserProfileModalProps) {
-  const { profile, biometricKind, biometricSignInEnabled, enableBiometricSignIn, disableBiometricSignIn } =
-    useAuth();
+  const {
+    profile,
+    applyProfile,
+    biometricKind,
+    biometricSignInEnabled,
+    enableBiometricSignIn,
+    disableBiometricSignIn,
+  } = useAuth();
+
+  const [editing, setEditing] = useState(false);
+  const [fullName, setFullName] = useState(profile?.fullName ?? '');
+  const [contactNumber, setContactNumber] = useState(profile?.contactNumber ?? '');
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileError, setProfileError] = useState('');
+  const [profileNotice, setProfileNotice] = useState('');
+
+  const [fingerprint, setFingerprint] = useState<string | null>(null);
+  const [fingerprintVisible, setFingerprintVisible] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [savingPassword, setSavingPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordNotice, setPasswordNotice] = useState('');
 
   const [biometricBusy, setBiometricBusy] = useState(false);
   const [biometricError, setBiometricError] = useState('');
 
+  const busy = savingProfile || savingPassword || biometricBusy;
+
+  useEffect(() => {
+    if (!visible) {
+      return;
+    }
+
+    let active = true;
+    fetchPasswordFingerprint()
+      .then((value) => {
+        if (active) {
+          setFingerprint(value);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setFingerprint(null);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [visible]);
+
   const handleClose = useCallback(() => {
-    if (biometricBusy) {
+    if (busy) {
       return;
     }
     onClose();
-  }, [biometricBusy, onClose]);
+  }, [busy, onClose]);
+
+  const handleSaveProfile = useCallback(async () => {
+    if (!fullName.trim()) {
+      setProfileError('Full name is required.');
+      return;
+    }
+
+    setSavingProfile(true);
+    setProfileError('');
+    setProfileNotice('');
+    try {
+      const nextProfile = await updateOwnProfile({ fullName: fullName.trim(), contactNumber });
+      applyProfile(nextProfile);
+      setEditing(false);
+      setProfileNotice('Your profile has been updated.');
+    } catch (error) {
+      setProfileError(error instanceof Error ? error.message : 'Your profile could not be updated.');
+    } finally {
+      setSavingProfile(false);
+    }
+  }, [fullName, contactNumber, applyProfile]);
+
+  const handleCancelEdit = useCallback(() => {
+    setEditing(false);
+    setFullName(profile?.fullName ?? '');
+    setContactNumber(profile?.contactNumber ?? '');
+    setProfileError('');
+  }, [profile]);
+
+  const handleChangePassword = useCallback(async () => {
+    if (!currentPassword) {
+      setPasswordError('Enter your current password.');
+      return;
+    }
+    if (newPassword.length < 8) {
+      setPasswordError('The new password must be at least 8 characters.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError('The new passwords do not match.');
+      return;
+    }
+
+    setSavingPassword(true);
+    setPasswordError('');
+    setPasswordNotice('');
+    try {
+      await changeOwnPassword(currentPassword, newPassword);
+      setFingerprint(await fetchPasswordFingerprint());
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setChangingPassword(false);
+      setPasswordNotice('Your password has been changed.');
+    } catch (error) {
+      setPasswordError(error instanceof Error ? error.message : 'Your password could not be changed.');
+    } finally {
+      setSavingPassword(false);
+    }
+  }, [currentPassword, newPassword, confirmPassword]);
 
   const handleToggleBiometric = useCallback(async () => {
     setBiometricBusy(true);
@@ -51,13 +162,11 @@ export function UserProfileModal({ visible, onClose }: UserProfileModalProps) {
     }
   }, [biometricSignInEnabled, enableBiometricSignIn, disableBiometricSignIn]);
 
-  const roleLabel = profile ? ROLE_LABELS[profile.userRole] : '—';
-
   return (
     <Modal
       visible={visible}
       onClose={handleClose}
-      dismissOnBackdropPress={!biometricBusy}
+      dismissOnBackdropPress={!busy}
       contentStyle={styles.modalContent}>
       <View style={styles.header}>
         <Text style={styles.title}>My Profile</Text>
@@ -72,22 +181,195 @@ export function UserProfileModal({ visible, onClose }: UserProfileModalProps) {
       </View>
 
       <View style={styles.body}>
-        <Card title="Account Information" style={styles.card}>
-          <InfoRow icon="user" label="Full Name" value={profile?.fullName ?? '—'} />
-          <InfoRow icon="email" label="Email Address" value={profile?.email ?? '—'} />
-          <InfoRow icon="phone" label="Contact Number" value={profile?.contactNumber ?? 'Not provided'} />
-          <InfoRow icon="directory" label="User Role" value={roleLabel} isLast />
+        <Card
+          title="Account Information"
+          subtitle={editing ? 'Email address and user role are locked' : undefined}
+          action={
+            editing ? undefined : (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Edit profile"
+                hitSlop={8}
+                style={styles.cardAction}
+                onPress={() => {
+                  setProfileNotice('');
+                  setEditing(true);
+                }}>
+                <AppIcon name="edit" size={14} tintColor={DefaultTheme.colors.primary} />
+                <Text style={styles.cardActionText}>Edit</Text>
+              </Pressable>
+            )
+          }
+          style={styles.card}>
+          {editing ? (
+            <View style={styles.editFields}>
+              <Input
+                label="Full Name"
+                value={fullName}
+                onChangeText={setFullName}
+                icon="user"
+                autoCapitalize="words"
+              />
+              <Input
+                label="Contact Number"
+                value={contactNumber}
+                onChangeText={setContactNumber}
+                icon="phone"
+                keyboardType="phone-pad"
+              />
+              <LockedRow icon="email" label="Email Address" value={profile?.email ?? '—'} />
+              <LockedRow icon="directory" label="User Role" value={roleLabel(profile?.userRole)} />
+              {!!profileError && <Text style={styles.errorText}>{profileError}</Text>}
+              <View style={styles.inlineActions}>
+                <MatchaButton
+                  label="Cancel"
+                  variant="outline"
+                  disabled={savingProfile}
+                  style={styles.inlineAction}
+                  onPress={handleCancelEdit}
+                />
+                <MatchaButton
+                  label={savingProfile ? 'Saving…' : 'Save Changes'}
+                  disabled={savingProfile}
+                  style={styles.inlineAction}
+                  onPress={handleSaveProfile}
+                />
+              </View>
+            </View>
+          ) : (
+            <>
+              <InfoRow icon="user" label="Full Name" value={profile?.fullName ?? '—'} />
+              <InfoRow icon="email" label="Email Address" value={profile?.email ?? '—'} locked />
+              <InfoRow
+                icon="phone"
+                label="Contact Number"
+                value={profile?.contactNumber ?? 'Not provided'}
+              />
+              <InfoRow
+                icon="directory"
+                label="User Role"
+                value={roleLabel(profile?.userRole)}
+                locked
+                isLast
+              />
+              {!!profileNotice && <Text style={styles.noticeText}>{profileNotice}</Text>}
+            </>
+          )}
         </Card>
 
-        <Card title="Fingerprint Sign-In" subtitle="Unlock the app with your fingerprint" style={styles.card}>
-          <NativeBiometricSection
-            kind={biometricKind}
-            enabled={biometricSignInEnabled}
-            busy={biometricBusy}
-            error={biometricError}
-            onToggle={handleToggleBiometric}
-          />
+        <Card
+          title="Password"
+          subtitle="Stored as a one-way hash — never in plain text"
+          action={
+            changingPassword ? undefined : (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Change password"
+                hitSlop={8}
+                style={styles.cardAction}
+                onPress={() => {
+                  setPasswordNotice('');
+                  setChangingPassword(true);
+                }}>
+                <AppIcon name="key" size={14} tintColor={DefaultTheme.colors.primary} />
+                <Text style={styles.cardActionText}>Change</Text>
+              </Pressable>
+            )
+          }
+          style={styles.card}>
+          <View style={styles.hashRow}>
+            <View style={styles.infoIcon}>
+              <AppIcon name="lock" size={16} tintColor={DefaultTheme.colors.primary} />
+            </View>
+            <View style={styles.infoText}>
+              <Text style={styles.infoLabel}>Password (hashed)</Text>
+              <Text style={styles.hashValue} numberOfLines={2}>
+                {fingerprint == null
+                  ? 'Unavailable'
+                  : fingerprintVisible
+                    ? fingerprint
+                    : `${fingerprint.slice(0, FINGERPRINT_PREVIEW_LENGTH)}…`}
+              </Text>
+              <Text style={styles.hashCaption}>SHA-256 digest of your stored credential</Text>
+            </View>
+            {fingerprint != null && (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={fingerprintVisible ? 'Shorten hash' : 'Show full hash'}
+                hitSlop={8}
+                style={styles.hashToggle}
+                onPress={() => setFingerprintVisible((current) => !current)}>
+                <AppIcon
+                  name={fingerprintVisible ? 'eyeOff' : 'eye'}
+                  size={16}
+                  tintColor={DefaultTheme.colors.muted}
+                />
+              </Pressable>
+            )}
+          </View>
+
+          {changingPassword && (
+            <View style={styles.editFields}>
+              <Input
+                label="Current Password"
+                value={currentPassword}
+                onChangeText={setCurrentPassword}
+                icon="lock"
+                secureTextEntry
+              />
+              <Input
+                label="New Password"
+                value={newPassword}
+                onChangeText={setNewPassword}
+                icon="key"
+                secureTextEntry
+              />
+              <Input
+                label="Confirm New Password"
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                icon="key"
+                secureTextEntry
+              />
+              {!!passwordError && <Text style={styles.errorText}>{passwordError}</Text>}
+              <View style={styles.inlineActions}>
+                <MatchaButton
+                  label="Cancel"
+                  variant="outline"
+                  disabled={savingPassword}
+                  style={styles.inlineAction}
+                  onPress={() => {
+                    setChangingPassword(false);
+                    setCurrentPassword('');
+                    setNewPassword('');
+                    setConfirmPassword('');
+                    setPasswordError('');
+                  }}
+                />
+                <MatchaButton
+                  label={savingPassword ? 'Saving…' : 'Update Password'}
+                  disabled={savingPassword}
+                  style={styles.inlineAction}
+                  onPress={handleChangePassword}
+                />
+              </View>
+            </View>
+          )}
+
+          {!!passwordNotice && <Text style={styles.noticeText}>{passwordNotice}</Text>}
         </Card>
+
+        {Platform.OS !== 'web' && (
+          <Card title="Fingerprint Sign-In" subtitle="Unlock the app with your fingerprint" style={styles.card}>
+            <NativeBiometricSection
+              kind={biometricKind}
+              enabled={biometricSignInEnabled}
+              busy={biometricBusy}
+              error={biometricError}
+              onToggle={handleToggleBiometric}
+            />
+          </Card>
+        )}
       </View>
     </Modal>
   );
@@ -97,11 +379,13 @@ function InfoRow({
   icon,
   label,
   value,
+  locked = false,
   isLast = false,
 }: {
   icon: AppIconName;
   label: string;
   value: string;
+  locked?: boolean;
   isLast?: boolean;
 }) {
   return (
@@ -115,6 +399,24 @@ function InfoRow({
           {value}
         </Text>
       </View>
+      {locked && <AppIcon name="lock" size={13} tintColor={DefaultTheme.colors.muted} />}
+    </View>
+  );
+}
+
+function LockedRow({ icon, label, value }: { icon: AppIconName; label: string; value: string }) {
+  return (
+    <View style={styles.lockedRow}>
+      <View style={styles.infoIcon}>
+        <AppIcon name={icon} size={16} tintColor={DefaultTheme.colors.muted} />
+      </View>
+      <View style={styles.infoText}>
+        <Text style={styles.infoLabel}>{label}</Text>
+        <Text style={styles.lockedValue} numberOfLines={1}>
+          {value}
+        </Text>
+      </View>
+      <AppIcon name="lock" size={13} tintColor={DefaultTheme.colors.muted} />
     </View>
   );
 }
@@ -190,6 +492,20 @@ const styles = StyleSheet.create({
   card: {
     padding: 18,
   },
+  cardAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: DefaultTheme.radius.pill,
+    backgroundColor: DefaultTheme.colors.softOlive,
+  },
+  cardActionText: {
+    color: DefaultTheme.colors.primary,
+    fontFamily: DefaultTheme.fonts.bodyBold,
+    fontSize: 11.5,
+  },
   infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -210,6 +526,7 @@ const styles = StyleSheet.create({
   },
   infoText: {
     flex: 1,
+    minWidth: 0,
   },
   infoLabel: {
     color: DefaultTheme.colors.muted,
@@ -221,6 +538,60 @@ const styles = StyleSheet.create({
     color: DefaultTheme.colors.ink,
     fontFamily: DefaultTheme.fonts.bodySemiBold,
     fontSize: 14,
+  },
+  editFields: {
+    marginTop: 14,
+    gap: 16,
+  },
+  lockedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 10,
+    borderRadius: DefaultTheme.radius.sm,
+    backgroundColor: DefaultTheme.colors.cool,
+    borderWidth: 1,
+    borderColor: DefaultTheme.colors.line,
+  },
+  lockedValue: {
+    marginTop: 2,
+    color: DefaultTheme.colors.muted,
+    fontFamily: DefaultTheme.fonts.bodySemiBold,
+    fontSize: 13.5,
+  },
+  hashRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    paddingVertical: 4,
+  },
+  hashValue: {
+    marginTop: 3,
+    color: DefaultTheme.colors.ink,
+    fontFamily: Platform.select({ web: 'monospace', default: DefaultTheme.fonts.bodySemiBold }),
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  hashCaption: {
+    marginTop: 4,
+    color: DefaultTheme.colors.muted,
+    fontFamily: DefaultTheme.fonts.bodyMedium,
+    fontSize: 10.5,
+  },
+  hashToggle: {
+    width: 30,
+    height: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  inlineActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  inlineAction: {
+    flex: 1,
+    minHeight: 44,
+    paddingHorizontal: 12,
   },
   statusRow: {
     flexDirection: 'row',
@@ -240,10 +611,14 @@ const styles = StyleSheet.create({
     lineHeight: 19,
   },
   errorText: {
-    marginTop: 4,
-    marginBottom: 10,
     color: '#D64545',
     fontFamily: DefaultTheme.fonts.bodyMedium,
+    fontSize: 12.5,
+  },
+  noticeText: {
+    marginTop: 12,
+    color: DefaultTheme.colors.primary,
+    fontFamily: DefaultTheme.fonts.bodySemiBold,
     fontSize: 12.5,
   },
   actionButton: {

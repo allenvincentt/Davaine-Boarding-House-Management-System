@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Modal as RNModal, Platform, Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 
 import { SplashScreen } from '@/components/common/SplashScreen';
@@ -12,12 +12,15 @@ import { Modal } from '@/components/ui/modals/Modal';
 import { DefaultTheme } from '@/constants/defaultTheme';
 import { Gradient } from '@/constants/gradient';
 import { useSignInFlow } from '@/hooks/useSignInFlow';
+import type { AdminUserModel } from '@/models/adminUserModel';
 import { useAuth } from '@/providers/AuthProvider';
+import { isGuestRole } from '@/services/accessControl';
 
 type SignInModalProps = {
   visible: boolean;
   onClose: () => void;
   onForgotPassword?: () => void;
+  onGuestSignIn?: () => void;
 };
 
 type FieldErrors = {
@@ -31,21 +34,25 @@ const webHeroGradient: ViewStyle & { backgroundImage: string } = {
   backgroundImage: Gradient.base,
 };
 
-export function SignInModal({ visible, onClose, onForgotPassword }: SignInModalProps) {
+export function SignInModal({
+  visible,
+  onClose,
+  onForgotPassword,
+  onGuestSignIn,
+}: SignInModalProps) {
   const router = useRouter();
   const { biometricKind, biometricAvailable, biometricSignInEnabled } = useAuth();
-  const handleSignedIn = useCallback(() => {
-    router.replace('/admin-pages/DashboardPage');
-  }, [router]);
-  const { status, errorMessage, submit, submitBiometric, reset } = useSignInFlow(handleSignedIn);
-  const isSubmitting = status === 'submitting';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [enableFingerprintSignIn, setEnableFingerprintSignIn] = useState(false);
 
-  const canOfferFingerprintEnrollment =
-    Platform.OS !== 'web' && biometricKind === 'fingerprint' && !biometricSignInEnabled;
+  const guestHandlerRef = useRef(onGuestSignIn);
+  const resetFlowRef = useRef<() => void>(() => undefined);
+
+  useEffect(() => {
+    guestHandlerRef.current = onGuestSignIn;
+  }, [onGuestSignIn]);
 
   const resetForm = useCallback(() => {
     setEmail('');
@@ -53,6 +60,31 @@ export function SignInModal({ visible, onClose, onForgotPassword }: SignInModalP
     setFieldErrors({});
     setEnableFingerprintSignIn(false);
   }, []);
+
+  const handleSignedIn = useCallback(
+    (profile: AdminUserModel) => {
+      if (isGuestRole(profile.userRole)) {
+        onClose();
+        resetForm();
+        resetFlowRef.current();
+        guestHandlerRef.current?.();
+        return;
+      }
+      router.replace('/admin-pages/DashboardPage');
+    },
+    [router, onClose, resetForm],
+  );
+
+  const { status, errorMessage, submit, submitBiometric, reset } = useSignInFlow(handleSignedIn);
+
+  useEffect(() => {
+    resetFlowRef.current = reset;
+  }, [reset]);
+
+  const isSubmitting = status === 'submitting';
+
+  const canOfferFingerprintEnrollment =
+    Platform.OS !== 'web' && biometricKind === 'fingerprint' && !biometricSignInEnabled;
 
   const handleClose = useCallback(() => {
     if (isSubmitting) {

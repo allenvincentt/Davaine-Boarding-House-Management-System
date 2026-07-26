@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
+  Easing,
   Pressable,
   StyleSheet,
   Text,
@@ -10,6 +11,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 
+import { NotificationPanel, type NotificationPanelAnchor } from '@/app/NotificationPanel';
 import { AppIcon } from '@/components/ui/AppIcon';
 import {
   GlassMaterial,
@@ -21,6 +23,7 @@ import { SearchField } from '@/components/ui/SearchField';
 import { Select, type SelectAnchor, type SelectOption } from '@/components/ui/Select';
 import { DefaultTheme } from '@/constants/defaultTheme';
 import { GlassMotion } from '@/constants/glassTheme';
+import { useNotifications } from '@/providers/NotificationProvider';
 
 const NEUTRAL_SHADOW = {
   shadowColor: '#4D4E47',
@@ -33,7 +36,6 @@ const NEUTRAL_SHADOW = {
 type TopBarProps = {
   searchValue: string;
   onSearchChange: (text: string) => void;
-  notificationCount?: number;
   adminName?: string;
   adminRole?: string;
   scrollY?: number;
@@ -45,7 +47,6 @@ type TopBarProps = {
 export function TopBar({
   searchValue,
   onSearchChange,
-  notificationCount = 0,
   adminName = 'Admin',
   adminRole = 'Administrator',
   scrollY = 0,
@@ -135,7 +136,7 @@ export function TopBar({
             <LiveClock />
           </>
         )}
-        <NotificationBell count={notificationCount} />
+        <NotificationBell />
         <AdminMenu
           name={adminName}
           role={adminRole}
@@ -234,26 +235,153 @@ function LiveClock() {
   );
 }
 
-function NotificationBell({ count }: { count: number }) {
+function NotificationBell() {
+  const { unreadCount } = useNotifications();
+  const wrapperRef = useRef<View>(null);
+  const [anchor, setAnchor] = useState<NotificationPanelAnchor | null>(null);
+  const [open, setOpen] = useState(false);
+
+  const pop = useRef(new Animated.Value(0)).current;
+  const halo = useRef(new Animated.Value(0)).current;
+  const idle = useRef(new Animated.Value(0)).current;
+  const previousCount = useRef(unreadCount);
+
+  useEffect(() => {
+    if (unreadCount > previousCount.current) {
+      pop.setValue(0);
+      Animated.sequence([
+        Animated.timing(pop, {
+          toValue: 1,
+          duration: 200,
+          easing: Easing.out(Easing.back(2.6)),
+          useNativeDriver: false,
+        }),
+        Animated.timing(pop, {
+          toValue: 0,
+          duration: 260,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: false,
+        }),
+      ]).start();
+
+      halo.setValue(0);
+      Animated.loop(
+        Animated.timing(halo, {
+          toValue: 1,
+          duration: 1150,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: false,
+        }),
+        { iterations: 3 },
+      ).start();
+    }
+
+    previousCount.current = unreadCount;
+  }, [unreadCount, pop, halo]);
+
+  useEffect(() => {
+    if (unreadCount === 0) {
+      idle.stopAnimation();
+      idle.setValue(0);
+      return;
+    }
+
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(idle, {
+          toValue: 1,
+          duration: 1100,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: false,
+        }),
+        Animated.timing(idle, {
+          toValue: 0,
+          duration: 1100,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: false,
+        }),
+        Animated.delay(1600),
+      ]),
+    );
+
+    loop.start();
+    return () => loop.stop();
+  }, [unreadCount, idle]);
+
+  const handlePress = () => {
+    if (open) {
+      setOpen(false);
+      return;
+    }
+
+    wrapperRef.current?.measureInWindow((x, y, width, height) => {
+      setAnchor({ x, y, width, height });
+      setOpen(true);
+    });
+  };
+
+  const badgeScale = Animated.multiply(
+    pop.interpolate({ inputRange: [0, 1], outputRange: [1, 1.55] }),
+    idle.interpolate({ inputRange: [0, 1], outputRange: [1, 1.12] }),
+  );
+
   return (
-    <GlassPressable
-      accessibilityLabel="Notifications"
-      variant="chip"
-      radius={DefaultTheme.radius.pill}
-      wash={false}
-      lift={1}
-      flex={0.08}
-      style={styles.bell}
-      contentStyle={styles.bellContent}>
-      <AppIcon name="bell" size={19} tintColor={DefaultTheme.colors.muted} />
-      {count > 0 && (
-        <View style={styles.badge}>
-          <Text style={styles.badgeText} numberOfLines={1}>
-            {count > 9 ? '9+' : count}
-          </Text>
-        </View>
+    <View ref={wrapperRef} collapsable={false} style={styles.bellWrap}>
+      <GlassPressable
+        accessibilityLabel={
+          unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'
+        }
+        accessibilityState={{ expanded: open }}
+        variant="chip"
+        radius={DefaultTheme.radius.pill}
+        wash={false}
+        lift={1}
+        flex={0.08}
+        onPress={handlePress}
+        style={styles.bell}
+        contentStyle={styles.bellContent}>
+        <Animated.View
+          style={{
+            transform: [
+              {
+                rotate: pop.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '14deg'] }),
+              },
+            ],
+          }}>
+          <AppIcon
+            name="bell"
+            size={19}
+            tintColor={unreadCount > 0 ? DefaultTheme.colors.primary : DefaultTheme.colors.muted}
+          />
+        </Animated.View>
+      </GlassPressable>
+
+      {unreadCount > 0 && (
+        <>
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.badgeHalo,
+              {
+                opacity: halo.interpolate({ inputRange: [0, 0.15, 1], outputRange: [0, 0.55, 0] }),
+                transform: [
+                  { scale: halo.interpolate({ inputRange: [0, 1], outputRange: [0.7, 2.4] }) },
+                ],
+              },
+            ]}
+          />
+          <Animated.View
+            pointerEvents="none"
+            style={[styles.badge, { transform: [{ scale: badgeScale }] }]}>
+            <Text style={styles.badgeText} numberOfLines={1}>
+              {unreadCount > 9 ? '9+' : unreadCount}
+            </Text>
+          </Animated.View>
+        </>
       )}
-    </GlassPressable>
+
+      <NotificationPanel visible={open} onClose={() => setOpen(false)} anchor={anchor} />
+    </View>
   );
 }
 
@@ -419,6 +547,9 @@ const styles = StyleSheet.create({
     fontSize: 9,
     letterSpacing: 0.5,
   },
+  bellWrap: {
+    position: 'relative',
+  },
   bell: {
     width: 38,
     height: 38,
@@ -443,6 +574,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1.5,
     borderColor: DefaultTheme.colors.white,
+  },
+  badgeHalo: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#D64545',
   },
   badgeText: {
     color: DefaultTheme.colors.white,

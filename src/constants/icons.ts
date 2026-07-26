@@ -75,6 +75,13 @@ export const appIcons = {
   edit: { ios: 'square.and.pencil', android: 'edit', web: 'edit' },
   trash: { ios: 'trash', android: 'delete', web: 'delete' },
   power: { ios: 'power', android: 'power_settings_new', web: 'power_settings_new' },
+  key: { ios: 'key.fill', android: 'key', web: 'key' },
+  userMinus: { ios: 'person.badge.minus', android: 'person_remove', web: 'person_remove' },
+  inbox: { ios: 'tray', android: 'inbox', web: 'inbox' },
+  refresh: { ios: 'arrow.clockwise', android: 'refresh', web: 'refresh' },
+  link: { ios: 'link', android: 'link', web: 'link' },
+  calendar: { ios: 'calendar', android: 'calendar_month', web: 'calendar_month' },
+  doorOpen: { ios: 'door.left.hand.open', android: 'meeting_room', web: 'meeting_room' },
 } satisfies Record<string, PlatformIcon>;
 
 export type AppIconName = keyof typeof appIcons;

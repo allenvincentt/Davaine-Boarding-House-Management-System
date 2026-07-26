@@ -12,6 +12,7 @@ import {
 import { AppState, Platform } from 'react-native';
 
 import type { AdminUserModel } from '@/models/adminUserModel';
+import { isGuestRole, type AppUserRole } from '@/services/accessControl';
 import {
   ExpiredBiometricSessionError,
   confirmPasswordReset,
@@ -34,17 +35,25 @@ import { supabase } from '@/services/supabaseClient';
 type AuthContextValue = {
   session: Session | null;
   profile: AdminUserModel | null;
+  userRole: AppUserRole | null;
+  isGuest: boolean;
   initializing: boolean;
   initError: string | null;
   retryInitialization: () => void;
-  signIn: (email: string, password: string, enableFingerprintSignIn?: boolean) => Promise<void>;
+  signIn: (
+    email: string,
+    password: string,
+    enableFingerprintSignIn?: boolean,
+  ) => Promise<AdminUserModel>;
   signOut: () => Promise<void>;
   requestPasswordReset: (email: string) => Promise<void>;
   confirmPasswordReset: (email: string, code: string, newPassword: string) => Promise<void>;
+  applyProfile: (profile: AdminUserModel) => void;
+  refreshProfile: () => Promise<void>;
   biometricKind: BiometricKind | null;
   biometricAvailable: boolean;
   biometricSignInEnabled: boolean;
-  signInWithBiometrics: () => Promise<void>;
+  signInWithBiometrics: () => Promise<AdminUserModel>;
   locked: boolean;
   unlockWithBiometrics: () => Promise<void>;
   enableBiometricSignIn: () => Promise<void>;
@@ -178,9 +187,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       session,
       profile,
+      userRole: profile?.userRole ?? null,
+      isGuest: isGuestRole(profile?.userRole),
       initializing,
       initError,
       retryInitialization: initialize,
+      applyProfile: (nextProfile: AdminUserModel) => {
+        setProfile(nextProfile);
+      },
+      refreshProfile: async () => {
+        const { data } = await supabase.auth.getSession();
+        if (!data.session) {
+          setProfile(null);
+          return;
+        }
+        const nextProfile = await fetchAdminProfile(data.session.user.id);
+        if (activeRef.current) {
+          setProfile(nextProfile);
+        }
+      },
       signIn: async (email: string, password: string, enableFingerprintSignIn = false) => {
         const { profile: nextProfile } = await signInAdmin(email, password);
         setProfile(nextProfile);
@@ -194,6 +219,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             biometricEnabledRef.current = true;
           }
         }
+
+        return nextProfile;
       },
       signOut: async () => {
         await signOutAdmin();
@@ -225,8 +252,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           throw new Error('Fingerprint authentication was not completed.');
         }
 
+        let signedInProfile: AdminUserModel;
+
         try {
           const { profile: nextProfile } = await signInWithCachedBiometricSession(cachedToken);
+          signedInProfile = nextProfile;
           setProfile(nextProfile);
           setLocked(false);
         } catch (error) {
@@ -242,6 +272,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (data.session?.refresh_token) {
           await cacheBiometricRefreshToken(data.session.refresh_token);
         }
+
+        return signedInProfile;
       },
       locked,
       unlockWithBiometrics: async () => {

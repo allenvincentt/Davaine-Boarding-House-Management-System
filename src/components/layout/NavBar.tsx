@@ -33,8 +33,10 @@ import {
 } from '@/components/ui/GlassPanel';
 import { GradientButton } from '@/components/ui/buttons/GradientButton';
 import { ForgotPasswordModal } from '@/app/auth/ForgotPasswordModal';
+import { GuessModeModal } from '@/app/auth/GuessModeModal';
 import { SignInModal } from '@/app/auth/SignInModal';
 import { useAuth } from '@/providers/AuthProvider';
+import { isGuestRole } from '@/services/accessControl';
 
 type NavBarProps = {
   activeSection: LandingSection;
@@ -50,14 +52,19 @@ export function NavBar({ activeSection, onNavigate, scrollY }: NavBarProps) {
   const { width } = useWindowDimensions();
   const { top: safeAreaTop, bottom: safeAreaBottom } = useSafeAreaInsets();
   const router = useRouter();
-  const { session, biometricAvailable, signInWithBiometrics } = useAuth();
+  const { session, isGuest, biometricAvailable, signInWithBiometrics } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const [signInOpen, setSignInOpen] = useState(false);
   const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
+  const [guestModeOpen, setGuestModeOpen] = useState(false);
   const [autoUnlocking, setAutoUnlocking] = useState(false);
 
   const handleSignInPress = useCallback(async () => {
     if (session) {
+      if (isGuest) {
+        setGuestModeOpen(true);
+        return;
+      }
       router.push('/admin-pages/DashboardPage');
       return;
     }
@@ -65,7 +72,11 @@ export function NavBar({ activeSection, onNavigate, scrollY }: NavBarProps) {
     if (biometricAvailable) {
       setAutoUnlocking(true);
       try {
-        await signInWithBiometrics();
+        const profile = await signInWithBiometrics();
+        if (isGuestRole(profile.userRole)) {
+          setGuestModeOpen(true);
+          return;
+        }
         router.replace('/admin-pages/DashboardPage');
         return;
       } catch {
@@ -76,7 +87,7 @@ export function NavBar({ activeSection, onNavigate, scrollY }: NavBarProps) {
     }
 
     setSignInOpen(true);
-  }, [session, router, biometricAvailable, signInWithBiometrics]);
+  }, [session, isGuest, router, biometricAvailable, signInWithBiometrics]);
 
   const handleForgotPassword = useCallback(() => {
     setSignInOpen(false);
@@ -340,12 +351,14 @@ export function NavBar({ activeSection, onNavigate, scrollY }: NavBarProps) {
         visible={signInOpen}
         onClose={() => setSignInOpen(false)}
         onForgotPassword={handleForgotPassword}
+        onGuestSignIn={() => setGuestModeOpen(true)}
       />
       <ForgotPasswordModal
         visible={forgotPasswordOpen}
         onClose={() => setForgotPasswordOpen(false)}
         onBackToSignIn={handleBackToSignIn}
       />
+      <GuessModeModal visible={guestModeOpen} onClose={() => setGuestModeOpen(false)} />
       <RNModal visible={autoUnlocking} transparent={false} animationType="fade" statusBarTranslucent>
         <SplashScreen status="loading" loadingMessage="Signing you in…" />
       </RNModal>
@@ -465,12 +478,14 @@ export function NavBar({ activeSection, onNavigate, scrollY }: NavBarProps) {
         visible={signInOpen}
         onClose={() => setSignInOpen(false)}
         onForgotPassword={handleForgotPassword}
+        onGuestSignIn={() => setGuestModeOpen(true)}
       />
       <ForgotPasswordModal
         visible={forgotPasswordOpen}
         onClose={() => setForgotPasswordOpen(false)}
         onBackToSignIn={handleBackToSignIn}
       />
+      <GuessModeModal visible={guestModeOpen} onClose={() => setGuestModeOpen(false)} />
       <RNModal visible={autoUnlocking} transparent={false} animationType="fade" statusBarTranslucent>
         <SplashScreen status="loading" loadingMessage="Signing you in…" />
       </RNModal>

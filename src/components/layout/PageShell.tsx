@@ -38,6 +38,7 @@ export function PageShell({ children }: PageShellProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [search, setSearch] = useState('');
   const [profileOpen, setProfileOpen] = useState(false);
+  const [profileSession, setProfileSession] = useState(0);
   const [signOutOpen, setSignOutOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [contentKey, setContentKey] = useState(0);
@@ -92,6 +93,11 @@ export function PageShell({ children }: PageShellProps) {
     router.push(adminSectionPaths[section]);
   };
 
+  const handleOpenProfile = () => {
+    setProfileSession((current) => current + 1);
+    setProfileOpen(true);
+  };
+
   const handleSignOut = async () => {
     await signOut();
     router.replace('/');
@@ -119,10 +125,9 @@ export function PageShell({ children }: PageShellProps) {
             style={[styles.topBar, { marginTop: safeAreaTop + 12 }]}
             searchValue={search}
             onSearchChange={setSearch}
-            notificationCount={3}
             adminName={adminName}
             adminRole={adminRole}
-            onProfilePress={() => setProfileOpen(true)}
+            onProfilePress={handleOpenProfile}
             onSignOut={() => setSignOutOpen(true)}
           />
           <PageRefreshProvider value={refreshValue}>
@@ -135,7 +140,11 @@ export function PageShell({ children }: PageShellProps) {
           collapsed={collapsed}
           onToggleCollapsed={() => setCollapsed((current) => !current)}
         />
-        <UserProfileModal visible={profileOpen} onClose={() => setProfileOpen(false)} />
+        <UserProfileModal
+          key={profileSession}
+          visible={profileOpen}
+          onClose={() => setProfileOpen(false)}
+        />
         {signOutDialog}
       </View>
     );
@@ -157,16 +166,19 @@ export function PageShell({ children }: PageShellProps) {
             style={styles.topBar}
             searchValue={search}
             onSearchChange={setSearch}
-            notificationCount={3}
             adminName={adminName}
             adminRole={adminRole}
-            onProfilePress={() => setProfileOpen(true)}
+            onProfilePress={handleOpenProfile}
             onSignOut={() => setSignOutOpen(true)}
           />
           {children}
         </View>
       </View>
-      <UserProfileModal visible={profileOpen} onClose={() => setProfileOpen(false)} />
+      <UserProfileModal
+        key={profileSession}
+        visible={profileOpen}
+        onClose={() => setProfileOpen(false)}
+      />
       {signOutDialog}
     </View>
   );

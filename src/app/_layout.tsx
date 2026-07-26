@@ -15,6 +15,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { BlurTargetProvider } from '@/components/ui/modals/BlurTargetProvider';
 import { FontFamily } from '@/constants/defaultTheme';
 import { AuthProvider } from '@/providers/AuthProvider';
+import { NotificationProvider } from '@/providers/NotificationProvider';
 
 export default function RootLayout() {
   useFonts({
@@ -29,9 +30,11 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <AuthProvider>
-        <BlurTargetProvider>
-          <Stack screenOptions={{ headerShown: false }} />
-        </BlurTargetProvider>
+        <NotificationProvider>
+          <BlurTargetProvider>
+            <Stack screenOptions={{ headerShown: false }} />
+          </BlurTargetProvider>
+        </NotificationProvider>
       </AuthProvider>
     </SafeAreaProvider>
   );
