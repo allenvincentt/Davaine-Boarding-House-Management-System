@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Linking,
   Pressable,
   StyleSheet,
   Text,
@@ -13,45 +14,46 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
-  CreateUpdateRoomModal,
-  type RoomFormMode,
-  type RoomFormSubmit,
-} from '@/app/admin-pages/CreateUpdateRoomModal';
-import { RoomDetailsModal } from '@/app/admin-pages/RoomDetailsModal';
+  AddNewRenterModal,
+  type AddRenterSubmit,
+} from '@/app/admin-pages/AddNewRenterModal';
+import { EditRoomModal, type EditRoomSubmit } from '@/app/admin-pages/EditRoomModal';
 import { MainContentArea } from '@/components/layout/MainContentArea';
 import { AppIcon } from '@/components/ui/AppIcon';
 import { GradientButton } from '@/components/ui/buttons/GradientButton';
+import { MatchaButton } from '@/components/ui/buttons/MatchaButton';
 import { Card } from '@/components/ui/cards/Card';
 import { KPICard, KPICardsRow } from '@/components/ui/cards/KPICards';
 import { ConfirmDialog } from '@/components/ui/modals/ConfirmDialog';
+import { Modal } from '@/components/ui/modals/Modal';
 import { SearchField } from '@/components/ui/SearchField';
 import { Select, type SelectAnchor, type SelectOption } from '@/components/ui/Select';
 import { Table, type TableColumn } from '@/components/ui/Table';
 import { DefaultTheme } from '@/constants/defaultTheme';
+import type { AppIconName } from '@/constants/icons';
+import { buildingToneOf } from '@/constants/roomTheme';
 import {
   buildingLabel,
   dueSummaryOf,
   formatPeso,
+  formatShortDate,
   isDueThisWeek,
   isDueToday,
-  remainingCapacityOf,
+  nextDueDate,
   roomBuildings,
   roomLabel,
   roomShortLabel,
   roomStatusOf,
   sortRooms,
+  tenantCountLabel,
   type RoomBuilding,
   type RoomModel,
   type RoomStatus,
+  type RoomTenantModel,
 } from '@/models/roomModel';
 import { useAuth } from '@/providers/AuthProvider';
 import { can } from '@/services/accessControl';
-import {
-  addRenters,
-  listRooms,
-  releaseRoom,
-  updateRoom,
-} from '@/services/roomManagementService';
+import { addRenters, listRooms, releaseRoom, updateRoom } from '@/services/roomManagementService';
 
 type StatusFilter = 'All' | RoomStatus;
 type BuildingFilter = 'All' | RoomBuilding;
@@ -70,6 +72,16 @@ const DUE_WEEK_COLOR = '#C4453B';
 const TOTAL_TENANT_COLUMN_WIDTH = 700;
 const DUE_COLUMN_WIDTH = 880;
 const MOBILE_TENANT_PREVIEW = 3;
+
+function initialsOf(name: string) {
+  const parts = name.split(' ').filter(Boolean);
+  const source = parts.length > 1 ? `${parts[0][0]}${parts[parts.length - 1][0]}` : name.slice(0, 2);
+  return source.toUpperCase();
+}
+
+function openExternal(url: string) {
+  Linking.openURL(url).catch(() => undefined);
+}
 
 export default function RoomManagementPage() {
   const { width } = useWindowDimensions();
@@ -98,10 +110,12 @@ export default function RoomManagementPage() {
   const [actionsAnchor, setActionsAnchor] = useState<SelectAnchor | null>(null);
   const [actionsOpen, setActionsOpen] = useState(false);
 
-  const [formMode, setFormMode] = useState<RoomFormMode>('create');
-  const [formRoom, setFormRoom] = useState<RoomModel | null>(null);
-  const [formOpen, setFormOpen] = useState(false);
-  const [formSession, setFormSession] = useState(0);
+  const [addOpen, setAddOpen] = useState(false);
+  const [addSession, setAddSession] = useState(0);
+
+  const [editRoom, setEditRoom] = useState<RoomModel | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editSession, setEditSession] = useState(0);
 
   const [detailsRoom, setDetailsRoom] = useState<RoomModel | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -143,7 +157,6 @@ export default function RoomManagementPage() {
   const occupiedRooms = rooms.filter((room) => roomStatusOf(room) === 'Occupied').length;
   const availableRooms = totalRooms - occupiedRooms;
   const totalTenants = rooms.reduce((sum, room) => sum + room.tenants.length, 0);
-  const totalCapacity = rooms.reduce((sum, room) => sum + room.capacity, 0);
   const dueTodayCount = rooms.filter((room) => isDueToday(room)).length;
   const dueThisWeekCount = rooms.filter((room) => isDueThisWeek(room)).length;
   const occupancyRate = totalRooms === 0 ? 0 : Math.round((occupiedRooms / totalRooms) * 100);
@@ -178,9 +191,7 @@ export default function RoomManagementPage() {
   }, []);
 
   const applyRoom = useCallback((next: RoomModel) => {
-    setRooms((current) =>
-      sortRooms(current.map((room) => (room.id === next.id ? next : room))),
-    );
+    setRooms((current) => sortRooms(current.map((room) => (room.id === next.id ? next : room))));
     setDetailsRoom((current) => (current && current.id === next.id ? next : current));
   }, []);
 
@@ -190,13 +201,19 @@ export default function RoomManagementPage() {
     setActionsOpen(true);
   }, []);
 
-  const openForm = useCallback((mode: RoomFormMode, room: RoomModel | null) => {
+  const openAdd = useCallback(() => {
     setNotice(null);
     setActionError(null);
-    setFormMode(mode);
-    setFormRoom(room);
-    setFormSession((current) => current + 1);
-    setFormOpen(true);
+    setAddSession((current) => current + 1);
+    setAddOpen(true);
+  }, []);
+
+  const openEdit = useCallback((room: RoomModel) => {
+    setNotice(null);
+    setActionError(null);
+    setEditRoom(room);
+    setEditSession((current) => current + 1);
+    setEditOpen(true);
   }, []);
 
   const openDetails = useCallback((room: RoomModel) => {
@@ -205,7 +222,7 @@ export default function RoomManagementPage() {
   }, []);
 
   const handleCreate = useCallback(
-    async (input: RoomFormSubmit) => {
+    async (input: AddRenterSubmit) => {
       const updated = await addRenters(input.roomId, input.renters);
       applyRoom(updated);
       setNotice(
@@ -218,7 +235,7 @@ export default function RoomManagementPage() {
   );
 
   const handleUpdate = useCallback(
-    async (input: RoomFormSubmit) => {
+    async (input: EditRoomSubmit) => {
       const updated = await updateRoom(input.roomId, {
         rate: input.rate,
         renters: input.renters,
@@ -238,9 +255,7 @@ export default function RoomManagementPage() {
         applyRoom(updated);
         setNotice(`${roomLabel(updated)} is now available. ${removed} tenant(s) were removed.`);
       } catch (error) {
-        setActionError(
-          error instanceof Error ? error.message : 'The room could not be updated.',
-        );
+        setActionError(error instanceof Error ? error.message : 'The room could not be updated.');
       }
     },
     [applyRoom],
@@ -265,7 +280,7 @@ export default function RoomManagementPage() {
         key: 'edit',
         label: 'Edit Room',
         icon: 'edit',
-        onSelect: () => openForm('edit', actionsRoom),
+        onSelect: () => openEdit(actionsRoom),
       });
     }
 
@@ -280,26 +295,22 @@ export default function RoomManagementPage() {
     }
 
     return options;
-  }, [actionsRoom, canUpdate, canDelete, openDetails, openForm]);
+  }, [actionsRoom, canUpdate, canDelete, openDetails, openEdit]);
 
   const columns = useMemo<TableColumn<RoomModel>[]>(() => {
     const list: TableColumn<RoomModel>[] = [
       {
         key: 'room',
         header: 'Room No.',
-        width: 128,
+        width: 138,
         render: (row) => (
           <View style={styles.roomCell}>
-            <View style={styles.roomBadge}>
-              <Text style={styles.roomBadgeText}>{roomShortLabel(row)}</Text>
-            </View>
+            <RoomBadge room={row} />
             <View style={styles.roomCellText}>
               <Text style={styles.roomLabel} numberOfLines={1}>
                 {roomLabel(row)}
               </Text>
-              <Text style={styles.roomCaption} numberOfLines={1}>
-                {buildingLabel(row.building)}
-              </Text>
+              <BuildingChip building={row.building} style={styles.roomCellChip} />
             </View>
           </View>
         ),
@@ -315,7 +326,7 @@ export default function RoomManagementPage() {
           <View>
             <Text style={styles.tenantCount}>{row.tenants.length}</Text>
             <Text style={styles.roomCaption} numberOfLines={1}>
-              of {row.capacity} slots
+              {row.tenants.length === 1 ? 'tenant' : 'tenants'}
             </Text>
           </View>
         ),
@@ -368,7 +379,9 @@ export default function RoomManagementPage() {
         header: 'Actions',
         width: 62,
         align: 'right',
-        render: (row) => <RowActionsButton room={row} onOpen={(anchor) => openActions(row, anchor)} />,
+        render: (row) => (
+          <RowActionsButton room={row} onOpen={(anchor) => openActions(row, anchor)} />
+        ),
       },
     );
 
@@ -391,7 +404,7 @@ export default function RoomManagementPage() {
             <GradientButton
               accessibilityLabel="Add new renters"
               style={styles.addButton}
-              onPress={() => openForm('create', null)}>
+              onPress={openAdd}>
               <AppIcon name="userPlus" size={15} tintColor={DefaultTheme.colors.white} />
               <Text style={styles.addButtonLabel}>Add New Renters</Text>
             </GradientButton>
@@ -436,8 +449,8 @@ export default function RoomManagementPage() {
             iconColor={TENANT_COLOR}
             iconBackground="#EDE7F6"
             accentColor={TENANT_COLOR}
-            caption={`${totalCapacity - totalTenants} free bed slots`}
-            progress={totalCapacity === 0 ? 0 : totalTenants / totalCapacity}
+            caption={`Across ${occupiedRooms} occupied room(s)`}
+            progress={1}
           />
           <KPICard
             label="Due Payments Today"
@@ -553,7 +566,7 @@ export default function RoomManagementPage() {
           variant="fab"
           accessibilityLabel="Add new renters"
           style={{ bottom: Math.max(safeAreaBottom, 10) + 82 }}
-          onPress={() => openForm('create', null)}>
+          onPress={openAdd}>
           <AppIcon name="userPlus" size={22} tintColor={DefaultTheme.colors.white} />
         </GradientButton>
       )}
@@ -567,14 +580,20 @@ export default function RoomManagementPage() {
         minWidth={198}
       />
 
-      <CreateUpdateRoomModal
-        key={formSession}
-        visible={formOpen}
-        mode={formMode}
-        room={formRoom}
+      <AddNewRenterModal
+        key={`add-${addSession}`}
+        visible={addOpen}
         rooms={rooms}
-        onClose={() => setFormOpen(false)}
-        onSubmit={formMode === 'create' ? handleCreate : handleUpdate}
+        onClose={() => setAddOpen(false)}
+        onSubmit={handleCreate}
+      />
+
+      <EditRoomModal
+        key={`edit-${editSession}`}
+        visible={editOpen}
+        room={editRoom}
+        onClose={() => setEditOpen(false)}
+        onSubmit={handleUpdate}
       />
 
       <RoomDetailsModal
@@ -583,7 +602,7 @@ export default function RoomManagementPage() {
         canEdit={canUpdate}
         onEdit={(room) => {
           setDetailsOpen(false);
-          openForm('edit', room);
+          openEdit(room);
         }}
         onClose={() => setDetailsOpen(false)}
       />
@@ -606,6 +625,157 @@ export default function RoomManagementPage() {
         }}
         onClose={() => setPendingRelease(null)}
       />
+    </View>
+  );
+}
+
+function RoomDetailsModal({
+  visible,
+  room,
+  canEdit,
+  onEdit,
+  onClose,
+}: {
+  visible: boolean;
+  room: RoomModel | null;
+  canEdit: boolean;
+  onEdit: (room: RoomModel) => void;
+  onClose: () => void;
+}) {
+  if (!room) {
+    return null;
+  }
+
+  const status = roomStatusOf(room);
+  const tone = statusTone[status];
+
+  return (
+    <Modal visible={visible} onClose={onClose} contentStyle={styles.detailsShell}>
+      <View style={styles.detailsBody}>
+        <View style={styles.detailsHeader}>
+          <RoomBadge room={room} large />
+          <View style={styles.detailsHeaderText}>
+            <Text style={styles.detailsTitle} numberOfLines={1}>
+              {roomLabel(room)}
+            </Text>
+            <Text style={styles.detailsSubtitle} numberOfLines={1}>
+              {dueSummaryOf(room)}
+            </Text>
+          </View>
+          <BuildingChip building={room.building} />
+          <View style={[styles.detailsStatusChip, { backgroundColor: tone.background }]}>
+            <Text style={[styles.statusChipText, { color: tone.color }]}>{status}</Text>
+          </View>
+        </View>
+
+        <View style={styles.statGrid}>
+          <StatBlock icon="money" label="Room Rate" value={formatPeso(room.rate)} />
+          <StatBlock icon="users" label="Total Tenant" value={String(room.tenants.length)} />
+          <StatBlock
+            icon="calendar"
+            label="Next Due"
+            value={status === 'Occupied' ? formatShortDate(nextDueDate(room)) : '—'}
+          />
+        </View>
+
+        <View style={styles.tenantsHeader}>
+          <Text style={styles.detailsSectionTitle}>Tenants</Text>
+          <Text style={styles.detailsSectionCount}>{room.tenants.length}</Text>
+        </View>
+
+        {room.tenants.length === 0 ? (
+          <View style={styles.detailsEmptyBlock}>
+            <AppIcon name="inbox" size={20} tintColor={DefaultTheme.colors.muted} />
+            <Text style={styles.detailsEmptyText}>This room is available for new renters.</Text>
+          </View>
+        ) : (
+          <View style={styles.tenantList}>
+            {room.tenants.map((tenant, index) => (
+              <TenantRow
+                key={tenant.id}
+                tenant={tenant}
+                isLast={index === room.tenants.length - 1}
+              />
+            ))}
+          </View>
+        )}
+
+        <View style={styles.detailsActions}>
+          <MatchaButton
+            label="Close"
+            variant="outline"
+            style={styles.detailsAction}
+            onPress={onClose}
+          />
+          {canEdit && (
+            <MatchaButton
+              label="Edit Room"
+              icon="edit"
+              style={styles.detailsAction}
+              onPress={() => onEdit(room)}
+            />
+          )}
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function StatBlock({ icon, label, value }: { icon: AppIconName; label: string; value: string }) {
+  return (
+    <View style={styles.statBlock}>
+      <View style={styles.statLabelRow}>
+        <AppIcon name={icon} size={13} tintColor={DefaultTheme.colors.muted} />
+        <Text style={styles.statLabel} numberOfLines={1}>
+          {label}
+        </Text>
+      </View>
+      <Text style={styles.statValue} numberOfLines={1}>
+        {value}
+      </Text>
+    </View>
+  );
+}
+
+function TenantRow({ tenant, isLast }: { tenant: RoomTenantModel; isLast: boolean }) {
+  return (
+    <View style={[styles.tenantRow, isLast && styles.tenantRowLast]}>
+      <View style={styles.tenantAvatar}>
+        <Text style={styles.tenantAvatarText}>{initialsOf(tenant.fullName)}</Text>
+      </View>
+      <View style={styles.tenantRowBody}>
+        <Text style={styles.tenantRowName} numberOfLines={1}>
+          {tenant.fullName}
+        </Text>
+        <Text style={styles.tenantRowMeta} numberOfLines={1}>
+          {tenant.contactNumber ?? 'No contact number'}
+        </Text>
+      </View>
+      <View style={styles.tenantLinks}>
+        {!!tenant.contactNumber && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Call ${tenant.fullName}`}
+            hitSlop={6}
+            style={styles.tenantLinkButton}
+            onPress={() => openExternal(`tel:${tenant.contactNumber?.replace(/\s/g, '')}`)}>
+            <AppIcon name="phone" size={14} tintColor={DefaultTheme.colors.primary} />
+          </Pressable>
+        )}
+        {!!tenant.facebookLink && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Open Facebook profile of ${tenant.fullName}`}
+            hitSlop={6}
+            style={styles.tenantLinkButton}
+            onPress={() => {
+              const link = tenant.facebookLink ?? '';
+              openExternal(link.startsWith('@') ? `https://facebook.com/${link.slice(1)}` : link);
+            }}>
+            <AppIcon name="link" size={14} tintColor={DefaultTheme.colors.primary} />
+          </Pressable>
+        )}
+      </View>
     </View>
   );
 }
@@ -636,6 +806,45 @@ function Banner({
         onPress={onDismiss}>
         <AppIcon name="close" size={13} tintColor={DefaultTheme.colors.muted} />
       </Pressable>
+    </View>
+  );
+}
+
+function RoomBadge({ room, large }: { room: RoomModel; large?: boolean }) {
+  const tone = buildingToneOf(room.building);
+
+  return (
+    <View
+      style={[
+        styles.roomBadge,
+        large && styles.roomBadgeLarge,
+        { backgroundColor: tone.background },
+      ]}>
+      <Text
+        style={[styles.roomBadgeText, large && styles.roomBadgeTextLarge, { color: tone.color }]}>
+        {roomShortLabel(room)}
+      </Text>
+    </View>
+  );
+}
+
+function BuildingChip({
+  building,
+  style,
+}: {
+  building: RoomBuilding;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const tone = buildingToneOf(building);
+
+  return (
+    <View
+      style={[
+        styles.buildingChip,
+        { backgroundColor: tone.background, borderColor: tone.border },
+        style,
+      ]}>
+      <Text style={[styles.buildingChipText, { color: tone.color }]}>{buildingLabel(building)}</Text>
     </View>
   );
 }
@@ -790,36 +999,33 @@ function RoomListCard({
   onOpenActions: (anchor: SelectAnchor) => void;
 }) {
   const status = roomStatusOf(room);
-  const free = remainingCapacityOf(room);
+  const tone = buildingToneOf(room.building);
 
   return (
-    <View style={styles.mobileCard}>
+    <View style={[styles.mobileCard, { borderColor: tone.border }]}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`View ${roomLabel(room)}`}
         style={styles.mobileCardPressable}
         onPress={onPress}>
         <View style={styles.mobileCardHeader}>
-          <View style={styles.roomBadge}>
-            <Text style={styles.roomBadgeText}>{roomShortLabel(room)}</Text>
-          </View>
+          <RoomBadge room={room} />
           <View style={styles.mobileCardHeaderText}>
             <Text style={styles.roomLabel} numberOfLines={1}>
               {roomLabel(room)}
             </Text>
             <Text style={styles.roomCaption} numberOfLines={1}>
-              {buildingLabel(room.building)} · {dueSummaryOf(room)}
+              {dueSummaryOf(room)}
             </Text>
           </View>
         </View>
 
         <View style={styles.mobileMetaRow}>
+          <BuildingChip building={room.building} />
           <StatusChip status={status} />
           <View style={styles.mobileMetaItem}>
             <AppIcon name="users" size={12} tintColor={DefaultTheme.colors.muted} />
-            <Text style={styles.mobileMetaText}>
-              {room.tenants.length}/{room.capacity} tenants
-            </Text>
+            <Text style={styles.mobileMetaText}>{tenantCountLabel(room)}</Text>
           </View>
           <View style={styles.mobileMetaItem}>
             <AppIcon name="money" size={12} tintColor={DefaultTheme.colors.muted} />
@@ -831,10 +1037,6 @@ function RoomListCard({
           <Text style={styles.mobileSectionLabel}>Tenants</Text>
           <TenantStack room={room} limit={MOBILE_TENANT_PREVIEW} />
         </View>
-
-        {free > 0 && status === 'Occupied' && (
-          <Text style={styles.mobileFootnote}>{free} bed slot(s) still open</Text>
-        )}
       </Pressable>
 
       <View style={styles.mobileCardActions}>
@@ -983,16 +1185,25 @@ const styles = StyleSheet.create({
     borderRadius: DefaultTheme.radius.sm,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: DefaultTheme.colors.softOlive,
+  },
+  roomBadgeLarge: {
+    width: 48,
+    height: 48,
+    borderRadius: DefaultTheme.radius.md,
   },
   roomBadgeText: {
-    color: DefaultTheme.colors.primary,
     fontFamily: DefaultTheme.fonts.bodyBold,
     fontSize: 12.5,
+  },
+  roomBadgeTextLarge: {
+    fontSize: 15,
   },
   roomCellText: {
     flexShrink: 1,
     minWidth: 0,
+  },
+  roomCellChip: {
+    marginTop: 4,
   },
   roomLabel: {
     color: DefaultTheme.colors.ink,
@@ -1004,6 +1215,17 @@ const styles = StyleSheet.create({
     color: DefaultTheme.colors.muted,
     fontFamily: DefaultTheme.fonts.bodyMedium,
     fontSize: 11.5,
+  },
+  buildingChip: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: DefaultTheme.radius.pill,
+    borderWidth: 1,
+  },
+  buildingChipText: {
+    fontFamily: DefaultTheme.fonts.bodyBold,
+    fontSize: 10.5,
   },
   tenantCount: {
     color: DefaultTheme.colors.ink,
@@ -1080,7 +1302,7 @@ const styles = StyleSheet.create({
     borderRadius: DefaultTheme.radius.md,
     borderWidth: 1,
     borderColor: DefaultTheme.colors.line,
-    backgroundColor: DefaultTheme.colors.background,
+    backgroundColor: DefaultTheme.colors.white,
   },
   mobileCardPressable: {
     padding: 14,
@@ -1131,11 +1353,6 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.3,
   },
-  mobileFootnote: {
-    color: DefaultTheme.colors.primary,
-    fontFamily: DefaultTheme.fonts.bodySemiBold,
-    fontSize: 11.5,
-  },
   emptyText: {
     paddingVertical: 24,
     textAlign: 'center',
@@ -1148,5 +1365,171 @@ const styles = StyleSheet.create({
     color: DefaultTheme.colors.muted,
     fontFamily: DefaultTheme.fonts.bodyMedium,
     fontSize: 11.5,
+  },
+  detailsShell: {
+    maxWidth: 480,
+  },
+  detailsBody: {
+    padding: DefaultTheme.spacing.lg,
+  },
+  detailsHeader: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 10,
+  },
+  detailsHeaderText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  detailsTitle: {
+    color: DefaultTheme.colors.ink,
+    fontFamily: DefaultTheme.fonts.bodyBold,
+    fontSize: 17,
+  },
+  detailsSubtitle: {
+    marginTop: 3,
+    color: DefaultTheme.colors.muted,
+    fontFamily: DefaultTheme.fonts.bodyMedium,
+    fontSize: 12.5,
+  },
+  detailsStatusChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: DefaultTheme.radius.pill,
+  },
+  statGrid: {
+    marginTop: 20,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  statBlock: {
+    flexGrow: 1,
+    flexBasis: 110,
+    minWidth: 100,
+    padding: 12,
+    borderRadius: DefaultTheme.radius.sm,
+    backgroundColor: DefaultTheme.colors.white,
+    borderWidth: 1,
+    borderColor: DefaultTheme.colors.line,
+  },
+  statLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  statLabel: {
+    flexShrink: 1,
+    color: DefaultTheme.colors.muted,
+    fontFamily: DefaultTheme.fonts.bodyMedium,
+    fontSize: 11,
+  },
+  statValue: {
+    marginTop: 6,
+    color: DefaultTheme.colors.ink,
+    fontFamily: DefaultTheme.fonts.bodyBold,
+    fontSize: 15,
+  },
+  tenantsHeader: {
+    marginTop: 22,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  detailsSectionTitle: {
+    color: DefaultTheme.colors.ink,
+    fontFamily: DefaultTheme.fonts.bodyBold,
+    fontSize: 14,
+  },
+  detailsSectionCount: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: DefaultTheme.radius.pill,
+    backgroundColor: DefaultTheme.colors.cool,
+    color: DefaultTheme.colors.muted,
+    fontFamily: DefaultTheme.fonts.bodyBold,
+    fontSize: 11,
+  },
+  tenantList: {
+    marginTop: 6,
+  },
+  tenantRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: DefaultTheme.colors.line,
+  },
+  tenantRowLast: {
+    borderBottomWidth: 0,
+  },
+  tenantAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: DefaultTheme.radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: DefaultTheme.colors.primary,
+  },
+  tenantAvatarText: {
+    color: DefaultTheme.colors.white,
+    fontFamily: DefaultTheme.fonts.bodyBold,
+    fontSize: 12.5,
+  },
+  tenantRowBody: {
+    flex: 1,
+    minWidth: 0,
+  },
+  tenantRowName: {
+    color: DefaultTheme.colors.ink,
+    fontFamily: DefaultTheme.fonts.bodySemiBold,
+    fontSize: 13.5,
+  },
+  tenantRowMeta: {
+    marginTop: 2,
+    color: DefaultTheme.colors.muted,
+    fontFamily: DefaultTheme.fonts.bodyMedium,
+    fontSize: 12,
+  },
+  tenantLinks: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  tenantLinkButton: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: DefaultTheme.radius.sm,
+    borderWidth: 1,
+    borderColor: DefaultTheme.colors.line,
+    backgroundColor: DefaultTheme.colors.white,
+  },
+  detailsEmptyBlock: {
+    marginTop: 12,
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 22,
+    borderRadius: DefaultTheme.radius.sm,
+    borderWidth: 1,
+    borderColor: DefaultTheme.colors.line,
+    backgroundColor: DefaultTheme.colors.white,
+  },
+  detailsEmptyText: {
+    color: DefaultTheme.colors.muted,
+    fontFamily: DefaultTheme.fonts.bodyMedium,
+    fontSize: 12.5,
+  },
+  detailsActions: {
+    marginTop: 24,
+    flexDirection: 'row',
+    gap: 10,
+  },
+  detailsAction: {
+    flex: 1,
+    minHeight: 46,
+    paddingHorizontal: 12,
   },
 });

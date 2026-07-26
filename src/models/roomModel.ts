@@ -14,7 +14,6 @@ export type RoomModel = {
   building: RoomBuilding;
   number: number;
   rate: number;
-  capacity: number;
   dueDay: number;
   tenants: RoomTenantModel[];
 };
@@ -53,11 +52,13 @@ export function defaultRateFor(building: RoomBuilding, number: number) {
   return premiumRoomNumbers[building].includes(number) ? PREMIUM_ROOM_RATE : STANDARD_ROOM_RATE;
 }
 
-export function roomLabel(room: RoomModel) {
+export type RoomIdentity = Pick<RoomModel, 'building' | 'number'>;
+
+export function roomLabel(room: RoomIdentity) {
   return `Room ${room.number}-${room.building}`;
 }
 
-export function roomShortLabel(room: RoomModel) {
+export function roomShortLabel(room: RoomIdentity) {
   return `${room.number}-${room.building}`;
 }
 
@@ -69,8 +70,9 @@ export function roomStatusOf(room: RoomModel): RoomStatus {
   return room.tenants.length > 0 ? 'Occupied' : 'Available';
 }
 
-export function remainingCapacityOf(room: RoomModel) {
-  return Math.max(room.capacity - room.tenants.length, 0);
+export function tenantCountLabel(room: RoomModel) {
+  const count = room.tenants.length;
+  return `${count} ${count === 1 ? 'tenant' : 'tenants'}`;
 }
 
 export function sortRooms(rooms: RoomModel[]) {

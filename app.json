@@ -44,6 +44,15 @@
       ],
       "expo-secure-store",
       [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/android-icon-monochrome.png",
+          "color": "#8A9900",
+          "defaultChannel": "davaine-alerts-v2",
+          "enableBackgroundRemoteNotifications": false
+        }
+      ],
+      [
         "expo-local-authentication",
         {
           "faceIDPermission": "Allow Davaine to use Face ID to sign you in securely."

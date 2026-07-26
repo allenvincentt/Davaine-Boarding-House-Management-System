@@ -20,7 +20,6 @@ import { DefaultTheme } from '@/constants/defaultTheme';
 import type { AppIconName } from '@/constants/icons';
 import { relativeTimeFrom, type NotificationModel, type NotificationType } from '@/models/notificationModel';
 import { useNotifications } from '@/providers/NotificationProvider';
-import { getSystemPushPermission } from '@/services/pushNotificationService';
 import { appStorage } from '@/services/sessionStorage';
 
 export type NotificationPanelAnchor = {
@@ -67,13 +66,22 @@ const typeTones: Record<NotificationType, { color: string; background: string }>
 export function NotificationPanel({ visible, onClose, anchor }: NotificationPanelProps) {
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const compact = windowWidth < DefaultTheme.layout.compactNavigation;
-  const { notifications, unreadCount, loading, error, refresh, markRead, markAllRead, enableSystemPush } =
-    useNotifications();
+  const {
+    notifications,
+    unreadCount,
+    loading,
+    error,
+    refresh,
+    markRead,
+    markAllRead,
+    enableSystemPush,
+    systemPushSupported,
+    systemPushPermission,
+  } = useNotifications();
 
   const [mounted, setMounted] = useState(false);
   const [tab, setTab] = useState<NotificationTab>('unread');
   const [tabsWidth, setTabsWidth] = useState(0);
-  const [pushPermission, setPushPermission] = useState(() => getSystemPushPermission());
   const progress = useRef(new Animated.Value(0)).current;
   const indicator = useRef(new Animated.Value(1)).current;
   const restoredTab = useRef(false);
@@ -98,7 +106,6 @@ export function NotificationPanel({ visible, onClose, anchor }: NotificationPane
   useEffect(() => {
     if (visible) {
       setMounted(true);
-      setPushPermission(getSystemPushPermission());
       progress.setValue(0);
       Animated.timing(progress, {
         toValue: 1,
@@ -144,9 +151,8 @@ export function NotificationPanel({ visible, onClose, anchor }: NotificationPane
     setTabsWidth((current) => (current === measured ? current : measured));
   }, []);
 
-  const handleEnablePush = useCallback(async () => {
-    await enableSystemPush();
-    setPushPermission(getSystemPushPermission());
+  const handleEnablePush = useCallback(() => {
+    void enableSystemPush();
   }, [enableSystemPush]);
 
   const visibleNotifications = useMemo(() => {
@@ -319,15 +325,24 @@ export function NotificationPanel({ visible, onClose, anchor }: NotificationPane
           )}
         </ScrollView>
 
-        {pushPermission === 'default' && (
+        {systemPushSupported && systemPushPermission === 'default' && (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Turn on desktop alerts"
+            accessibilityLabel="Turn on push alerts"
             style={styles.footer}
             onPress={handleEnablePush}>
             <AppIcon name="bell" size={14} tintColor={DefaultTheme.colors.primary} />
-            <Text style={styles.footerText}>Turn on desktop alerts</Text>
+            <Text style={styles.footerText}>Turn on push alerts</Text>
           </Pressable>
+        )}
+
+        {systemPushSupported && systemPushPermission === 'denied' && (
+          <View style={styles.footer}>
+            <AppIcon name="bell" size={14} tintColor={DefaultTheme.colors.muted} />
+            <Text style={[styles.footerText, styles.footerTextMuted]}>
+              Push alerts are blocked in system settings
+            </Text>
+          </View>
         )}
       </Animated.View>
     </RNModal>
@@ -584,5 +599,8 @@ const styles = StyleSheet.create({
     color: DefaultTheme.colors.primary,
     fontFamily: DefaultTheme.fonts.bodySemiBold,
     fontSize: 12,
+  },
+  footerTextMuted: {
+    color: DefaultTheme.colors.muted,
   },
 });

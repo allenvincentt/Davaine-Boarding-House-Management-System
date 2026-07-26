@@ -35,6 +35,22 @@ export function toNotificationModel(row: NotificationRow): NotificationModel {
   };
 }
 
+export type NotificationPushPayload = {
+  title: string;
+  body: string;
+  tag: string;
+  data: { notificationId: string; type: NotificationType };
+};
+
+export function toPushPayload(notification: NotificationModel): NotificationPushPayload {
+  return {
+    title: notification.title,
+    body: notification.body,
+    tag: notification.id,
+    data: { notificationId: notification.id, type: notification.type },
+  };
+}
+
 export function relativeTimeFrom(iso: string, now: number = Date.now()): string {
   const elapsed = now - new Date(iso).getTime();
 

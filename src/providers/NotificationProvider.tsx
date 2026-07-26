@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 
-import type { NotificationModel } from '@/models/notificationModel';
+import { toPushPayload, type NotificationModel } from '@/models/notificationModel';
 import { useAuth } from '@/providers/AuthProvider';
 import {
   fetchNotifications,
@@ -18,9 +18,16 @@ import {
   subscribeToNotifications,
 } from '@/services/notificationService';
 import {
+  addSystemPushResponseListener,
+  clearSystemPushTray,
+  configureSystemPush,
+  consumeInitialSystemPushResponse,
   ensureSystemPushPermission,
+  getSystemPushPermission,
   isSystemPushSupported,
   presentSystemPush,
+  refreshSystemPushPermission,
+  type SystemPushPermission,
 } from '@/services/pushNotificationService';
 
 type NotificationContextValue = {
@@ -33,6 +40,7 @@ type NotificationContextValue = {
   markAllRead: () => Promise<void>;
   enableSystemPush: () => Promise<boolean>;
   systemPushSupported: boolean;
+  systemPushPermission: SystemPushPermission;
 };
 
 const NotificationContext = createContext<NotificationContextValue | null>(null);
@@ -44,13 +52,28 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<NotificationModel[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [systemPushPermission, setSystemPushPermission] = useState<SystemPushPermission>(() =>
+    getSystemPushPermission(),
+  );
   const activeRef = useRef(true);
+  const presentedRef = useRef(new Set<string>());
+  const promptedRef = useRef(false);
 
   useEffect(() => {
     activeRef.current = true;
     return () => {
       activeRef.current = false;
     };
+  }, []);
+
+  useEffect(() => {
+    configureSystemPush()
+      .then((permission) => {
+        if (activeRef.current) {
+          setSystemPushPermission(permission);
+        }
+      })
+      .catch(() => undefined);
   }, []);
 
   const load = useCallback(async (targetUserId: string) => {
@@ -72,11 +95,22 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const publishSystemPush = useCallback((notification: NotificationModel) => {
+    if (notification.readAt || presentedRef.current.has(notification.id)) {
+      return;
+    }
+
+    presentedRef.current.add(notification.id);
+    presentSystemPush(toPushPayload(notification));
+  }, []);
+
   useEffect(() => {
     if (!userId) {
       setNotifications([]);
       setError(null);
       setLoading(false);
+      presentedRef.current.clear();
+      promptedRef.current = false;
       return;
     }
 
@@ -89,7 +123,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
             ? current
             : [notification, ...current],
         );
-        presentSystemPush(notification.title, notification.body, notification.id);
+        publishSystemPush(notification);
       },
       onUpdate: (notification) => {
         setNotifications((current) =>
@@ -99,7 +133,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     });
 
     return unsubscribe;
-  }, [userId, load]);
+  }, [userId, load, publishSystemPush]);
 
   const markRead = useCallback(async (id: string) => {
     const stamp = new Date().toISOString();
@@ -125,6 +159,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     setNotifications((current) =>
       current.map((item) => (item.readAt ? item : { ...item, readAt: stamp })),
     );
+    void clearSystemPushTray();
 
     try {
       await markAllNotificationsRead(userId);
@@ -133,6 +168,63 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         setError(updateError instanceof Error ? updateError.message : 'Unable to update notifications.');
       }
     }
+  }, [userId]);
+
+  const enableSystemPush = useCallback(async () => {
+    const granted = await ensureSystemPushPermission();
+
+    if (activeRef.current) {
+      setSystemPushPermission(getSystemPushPermission());
+    }
+
+    return granted;
+  }, []);
+
+  useEffect(() => {
+    if (!userId || promptedRef.current || systemPushPermission !== 'default') {
+      return;
+    }
+
+    promptedRef.current = true;
+    enableSystemPush().catch(() => undefined);
+  }, [userId, systemPushPermission, enableSystemPush]);
+
+  useEffect(() => {
+    if (!userId) {
+      return;
+    }
+
+    const handleResponse = (data: Record<string, unknown>) => {
+      const notificationId = typeof data.notificationId === 'string' ? data.notificationId : null;
+
+      if (notificationId) {
+        void markRead(notificationId);
+      }
+    };
+
+    consumeInitialSystemPushResponse()
+      .then((data) => {
+        if (data && activeRef.current) {
+          handleResponse(data);
+        }
+      })
+      .catch(() => undefined);
+
+    return addSystemPushResponseListener(handleResponse);
+  }, [userId, markRead]);
+
+  useEffect(() => {
+    if (!userId) {
+      return;
+    }
+
+    refreshSystemPushPermission()
+      .then((permission) => {
+        if (activeRef.current) {
+          setSystemPushPermission(permission);
+        }
+      })
+      .catch(() => undefined);
   }, [userId]);
 
   const value = useMemo<NotificationContextValue>(
@@ -148,10 +240,21 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       },
       markRead,
       markAllRead,
-      enableSystemPush: ensureSystemPushPermission,
+      enableSystemPush,
       systemPushSupported: isSystemPushSupported(),
+      systemPushPermission,
     }),
-    [notifications, loading, error, userId, load, markRead, markAllRead],
+    [
+      notifications,
+      loading,
+      error,
+      userId,
+      load,
+      markRead,
+      markAllRead,
+      enableSystemPush,
+      systemPushPermission,
+    ],
   );
 
   return <NotificationContext.Provider value={value}>{children}</NotificationContext.Provider>;

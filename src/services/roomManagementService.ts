@@ -1,6 +1,5 @@
 import {
   defaultRateFor,
-  roomLabel,
   sortRooms,
   type RoomBuilding,
   type RoomModel,
@@ -23,7 +22,6 @@ type SeedTenant = [fullName: string, contactNumber: string, facebookHandle: stri
 type SeedRoom = {
   building: RoomBuilding;
   number: number;
-  capacity: number;
   dueOffset: number;
   tenants: SeedTenant[];
 };
@@ -34,7 +32,6 @@ const seedRooms: SeedRoom[] = [
   {
     building: 'A',
     number: 1,
-    capacity: 5,
     dueOffset: 0,
     tenants: [
       ['Maria Santos', '0917 555 0142', 'maria.santos'],
@@ -44,7 +41,6 @@ const seedRooms: SeedRoom[] = [
   {
     building: 'A',
     number: 2,
-    capacity: 4,
     dueOffset: 0,
     tenants: [
       ['James Reyes', '0920 447 1290', 'james.reyes'],
@@ -52,11 +48,10 @@ const seedRooms: SeedRoom[] = [
       ['Kevin Dela Cruz', '0977 340 5518', 'kevin.delacruz'],
     ],
   },
-  { building: 'A', number: 3, capacity: 4, dueOffset: 10, tenants: [] },
+  { building: 'A', number: 3, dueOffset: 10, tenants: [] },
   {
     building: 'A',
     number: 4,
-    capacity: 4,
     dueOffset: 3,
     tenants: [
       ['Anna Bautista', '0916 771 3320', 'anna.bautista'],
@@ -66,14 +61,12 @@ const seedRooms: SeedRoom[] = [
   {
     building: 'A',
     number: 5,
-    capacity: 4,
     dueOffset: 5,
     tenants: [['Paolo Mendoza', '0908 245 9917', 'paolo.mendoza']],
   },
   {
     building: 'A',
     number: 6,
-    capacity: 4,
     dueOffset: 12,
     tenants: [
       ['Rico Alvarez', '0975 883 2214', 'rico.alvarez'],
@@ -85,7 +78,6 @@ const seedRooms: SeedRoom[] = [
   {
     building: 'A',
     number: 7,
-    capacity: 5,
     dueOffset: 6,
     tenants: [
       ['Carlo Domingo', '0956 771 2048', 'carlo.domingo'],
@@ -95,7 +87,6 @@ const seedRooms: SeedRoom[] = [
   {
     building: 'B',
     number: 1,
-    capacity: 4,
     dueOffset: 1,
     tenants: [
       ['Ellen Navarro', '0929 336 5514', 'ellen.navarro'],
@@ -103,11 +94,10 @@ const seedRooms: SeedRoom[] = [
       ['Mika Tolentino', '0918 774 2205', 'mika.tolentino'],
     ],
   },
-  { building: 'B', number: 2, capacity: 4, dueOffset: 15, tenants: [] },
+  { building: 'B', number: 2, dueOffset: 15, tenants: [] },
   {
     building: 'B',
     number: 3,
-    capacity: 4,
     dueOffset: 2,
     tenants: [
       ['Dennis Ocampo', '0965 118 3327', 'dennis.ocampo'],
@@ -117,14 +107,12 @@ const seedRooms: SeedRoom[] = [
   {
     building: 'B',
     number: 4,
-    capacity: 4,
     dueOffset: 9,
     tenants: [['Arvin Cutamora', '0907 553 8821', 'arvin.cutamora']],
   },
   {
     building: 'B',
     number: 5,
-    capacity: 4,
     dueOffset: 0,
     tenants: [
       ['Joy Panganiban', '0937 224 6690', 'joy.panganiban'],
@@ -132,7 +120,7 @@ const seedRooms: SeedRoom[] = [
       ['Hazel Dizon', '0978 662 3319', 'hazel.dizon'],
     ],
   },
-  { building: 'B', number: 6, capacity: 4, dueOffset: 22, tenants: [] },
+  { building: 'B', number: 6, dueOffset: 22, tenants: [] },
 ];
 
 let tenantSequence = 0;
@@ -154,7 +142,6 @@ function buildStore(): RoomModel[] {
     building: seed.building,
     number: seed.number,
     rate: defaultRateFor(seed.building, seed.number),
-    capacity: seed.capacity,
     dueDay: dueDayFromOffset(seed.dueOffset),
     tenants: seed.tenants.map(([fullName, contactNumber, facebookHandle]) => ({
       id: nextTenantId(),
@@ -205,11 +192,6 @@ export async function addRenters(roomId: string, renters: RenterDraft[]): Promis
   if (incoming.length === 0) {
     throw new Error('Add at least one tenant name.');
   }
-  if (room.tenants.length + incoming.length > room.capacity) {
-    throw new Error(
-      `${roomLabel(room)} can only take ${room.capacity - room.tenants.length} more tenant(s).`,
-    );
-  }
 
   room.tenants = [...room.tenants, ...incoming];
   return settle(cloneRoom(room));
@@ -219,9 +201,6 @@ export async function updateRoom(roomId: string, input: UpdateRoomInput): Promis
   const room = requireRoom(roomId);
   const tenants = toTenants(input.renters, room.tenants);
 
-  if (tenants.length > room.capacity) {
-    throw new Error(`${roomLabel(room)} only has space for ${room.capacity} tenants.`);
-  }
   if (!Number.isFinite(input.rate) || input.rate <= 0) {
     throw new Error('Enter a valid room rate.');
   }
