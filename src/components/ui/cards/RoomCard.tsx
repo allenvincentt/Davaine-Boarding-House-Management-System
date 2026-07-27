@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppIcon } from '@/components/ui/AppIcon';
@@ -14,7 +15,13 @@ export function RoomCard({
   onPressDetails?: (room: PublicRoomModel) => void;
 }) {
   return (
-    <InteractiveCard borderEffect="race" style={styles.card}>
+    <InteractiveCard
+      borderEffect="race"
+      hoverBorderColor={DefaultTheme.colors.primary}
+      liftDistance={10}
+      accessibilityLabel={`View details for ${room.label}`}
+      onPress={() => onPressDetails?.(room)}
+      style={styles.card}>
       <View style={styles.imageWrap}>
         {room.coverPhoto ? (
           <Image source={{ uri: room.coverPhoto.uri }} style={styles.image} resizeMode="cover" />
@@ -54,16 +61,32 @@ export function RoomCard({
             <Text style={styles.rateLabel}>MONTHLY RATE</Text>
             <Text style={styles.rate}>{room.rateLabel}</Text>
           </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`View details for ${room.label}`}
-            style={styles.details}
-            onPress={() => onPressDetails?.(room)}>
-            <Text style={styles.detailsText}>Details</Text>
-          </Pressable>
+          <ViewDetailsButton room={room} onPress={onPressDetails} />
         </View>
       </View>
     </InteractiveCard>
+  );
+}
+
+function ViewDetailsButton({
+  room,
+  onPress,
+}: {
+  room: PublicRoomModel;
+  onPress?: (room: PublicRoomModel) => void;
+}) {
+  const [hovered, setHovered] = useState(false);
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`View details for ${room.label}`}
+      style={[styles.details, hovered && styles.detailsHovered]}
+      onHoverIn={() => setHovered(true)}
+      onHoverOut={() => setHovered(false)}
+      onPress={() => onPress?.(room)}>
+      <Text style={[styles.detailsText, hovered && styles.detailsTextHovered]}>View Details</Text>
+    </Pressable>
   );
 }
 
@@ -197,12 +220,20 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#D8DAD7',
     borderRadius: DefaultTheme.radius.pill,
-    paddingHorizontal: 11,
+    paddingHorizontal: 13,
     paddingVertical: 7,
+  },
+  detailsHovered: {
+    borderColor: DefaultTheme.colors.primary,
+    backgroundColor: DefaultTheme.colors.softOlive,
   },
   detailsText: {
     color: '#575854',
     fontFamily: DefaultTheme.fonts.bodyMedium,
     fontSize: 11,
+  },
+  detailsTextHovered: {
+    color: DefaultTheme.colors.primary,
+    fontFamily: DefaultTheme.fonts.bodyBold,
   },
 });

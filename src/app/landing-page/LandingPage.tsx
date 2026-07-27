@@ -1,4 +1,4 @@
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -40,8 +40,13 @@ import {
 import type { PublicRoomModel } from '@/models/contentModel';
 import { listCarouselSlides, listPublicRooms } from '@/services/contentService';
 
+function isLandingSection(value: string): value is LandingSection {
+  return landingNavigation.some((item) => item.section === value);
+}
+
 export default function LandingPage() {
   const { width, height } = useWindowDimensions();
+  const params = useLocalSearchParams<{ section?: string }>();
   const scrollViewRef = useRef<ScrollView>(null);
   const [scrollY, setScrollY] = useState(0);
   const [activeSection, setActiveSection] = useState<LandingSection>('home');
@@ -49,6 +54,7 @@ export default function LandingPage() {
   const pendingSectionRef = useRef<LandingSection | null>(null);
   const activeSectionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const navigationTargetRef = useRef<LandingSection | null>(null);
+  const handledSectionRef = useRef<string | null>(null);
   const [sectionPositions, setSectionPositions] = useState<Record<LandingSection, number>>({
     home: 0,
     rooms: 0,
@@ -139,22 +145,46 @@ export default function LandingPage() {
     );
   };
 
-  const navigateTo = (section: LandingSection) => {
-    if (activeSectionTimer.current !== null) {
-      clearTimeout(activeSectionTimer.current);
-      activeSectionTimer.current = null;
+  const navigateTo = useCallback(
+    (section: LandingSection) => {
+      if (activeSectionTimer.current !== null) {
+        clearTimeout(activeSectionTimer.current);
+        activeSectionTimer.current = null;
+      }
+      pendingSectionRef.current = null;
+      navigationTargetRef.current = section;
+      activeSectionRef.current = section;
+      setActiveSection(section);
+      scrollViewRef.current?.scrollTo({
+        y: section === 'home'
+          ? 0
+          : Math.max(0, sectionPositions[section] - (compactNavigation ? 0 : 76)),
+        animated: true,
+      });
+    },
+    [sectionPositions, compactNavigation],
+  );
+
+  const requestedSection = typeof params.section === 'string' ? params.section : null;
+
+  useEffect(() => {
+    if (!requestedSection || !isLandingSection(requestedSection)) {
+      return;
     }
-    pendingSectionRef.current = null;
-    navigationTargetRef.current = section;
-    activeSectionRef.current = section;
-    setActiveSection(section);
-    scrollViewRef.current?.scrollTo({
-      y: section === 'home'
-        ? 0
-        : Math.max(0, sectionPositions[section] - (compactNavigation ? 0 : 76)),
-      animated: true,
-    });
-  };
+    if (handledSectionRef.current === requestedSection) {
+      return;
+    }
+    if (requestedSection !== 'home' && sectionPositions[requestedSection] <= 0) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      handledSectionRef.current = requestedSection;
+      navigateTo(requestedSection);
+    }, 0);
+
+    return () => clearTimeout(timer);
+  }, [requestedSection, sectionPositions, navigateTo]);
 
   const handleScroll = (offset: number) => {
     setScrollY(offset);
@@ -222,13 +252,7 @@ export default function LandingPage() {
         visible={detailsOpen}
         room={detailsRoom}
         onClose={() => setDetailsOpen(false)}
-        onInquire={(room) =>
-          Linking.openURL(
-            `mailto:${communityContact.email}?subject=${encodeURIComponent(
-              `Inquiry about ${room.label}`,
-            )}`,
-          ).catch(() => undefined)
-        }
+        onInquire={() => navigateTo('about')}
       />
     </View>
   );

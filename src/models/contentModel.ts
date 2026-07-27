@@ -27,12 +27,14 @@ export type RoomContentModel = {
   photos: RoomPhotoModel[];
 };
 
+export type ReviewStatus = 'Pending' | 'Approved' | 'Disapproved';
+
 export type RoomReviewModel = {
   id: string;
   roomId: string;
-  author: string;
   rating: number;
   comment: string;
+  status: ReviewStatus;
   createdAt: string;
 };
 
@@ -52,7 +54,6 @@ export type PublicRoomModel = {
   amenities: string[];
   photos: RoomPhotoModel[];
   coverPhoto: RoomPhotoModel | null;
-  reviews: RoomReviewModel[];
   rating: number;
   ratingLabel: string;
   reviewCount: number;
@@ -61,6 +62,9 @@ export type PublicRoomModel = {
 export const MAX_ROOM_PHOTOS = 8;
 export const MAX_CAROUSEL_SLIDES = 12;
 export const MAX_ROOM_CAPACITY = 12;
+export const MAX_REVIEW_COMMENT = 400;
+
+export const reviewStatuses: ReviewStatus[] = ['Pending', 'Approved', 'Disapproved'];
 
 const REVIEW_MONTHS = [
   'Jan',
@@ -93,15 +97,16 @@ export function ratingLabelOf(rating: number) {
   return rating > 0 ? rating.toFixed(1) : '—';
 }
 
-export function ratingBreakdownOf(reviews: RoomReviewModel[]) {
-  return [5, 4, 3, 2, 1].map((star) => {
-    const count = reviews.filter((review) => Math.round(review.rating) === star).length;
-    return {
-      star,
-      count,
-      share: reviews.length === 0 ? 0 : count / reviews.length,
-    };
-  });
+export function reviewSummaryOf(reviews: RoomReviewModel[]) {
+  const positive = reviews.filter((review) => review.rating >= 4).length;
+  const negative = reviews.filter((review) => review.rating <= 2).length;
+
+  return {
+    average: averageRatingOf(reviews),
+    total: reviews.length,
+    positive,
+    negative,
+  };
 }
 
 export function reviewDateLabel(value: string) {
@@ -112,9 +117,26 @@ export function reviewDateLabel(value: string) {
   return `${REVIEW_MONTHS[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
 }
 
+export function starRow(rating: number) {
+  const filled = Math.max(0, Math.min(5, Math.round(rating)));
+  return `${'★'.repeat(filled)}${'☆'.repeat(5 - filled)}`;
+}
+
 export function coverPhotoOf(content: RoomContentModel): RoomPhotoModel | null {
   const selected = content.photos.find((photo) => photo.id === content.coverPhotoId);
   return selected ?? content.photos[0] ?? null;
+}
+
+export function defaultRoomContent(room: RoomModel): RoomContentModel {
+  return {
+    roomId: room.id,
+    headline: roomLabel(room),
+    description: '',
+    capacity: 2,
+    amenities: [],
+    coverPhotoId: null,
+    photos: [],
+  };
 }
 
 export function toPublicRoom(
@@ -136,12 +158,11 @@ export function toPublicRoom(
     available: status === 'Available',
     capacity: content.capacity,
     capacityLabel: capacityLabelOf(content.capacity),
-    headline: content.headline,
+    headline: content.headline || roomLabel(room),
     description: content.description,
     amenities: content.amenities,
     photos: content.photos,
     coverPhoto: coverPhotoOf(content),
-    reviews,
     rating,
     ratingLabel: ratingLabelOf(rating),
     reviewCount: reviews.length,

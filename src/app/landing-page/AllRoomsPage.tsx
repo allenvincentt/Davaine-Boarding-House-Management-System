@@ -3,7 +3,6 @@ import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -96,6 +95,10 @@ export default function AllRoomsPage() {
     router.replace('/');
   };
 
+  const goToAboutSection = () => {
+    router.push({ pathname: '/', params: { section: 'about' } });
+  };
+
   return (
     <View style={styles.page}>
       <StatusBar style="dark" />
@@ -173,13 +176,7 @@ export default function AllRoomsPage() {
         visible={detailsOpen}
         room={selected}
         onClose={() => setDetailsOpen(false)}
-        onInquire={(room) =>
-          Linking.openURL(
-            `mailto:${communityContact.email}?subject=${encodeURIComponent(
-              `Inquiry about ${room.label}`,
-            )}`,
-          ).catch(() => undefined)
-        }
+        onInquire={goToAboutSection}
       />
     </View>
   );

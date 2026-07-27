@@ -18,8 +18,11 @@ type InteractiveCardProps = {
   style?: StyleProp<ViewStyle>;
   glowColor?: string;
   hoverBackgroundColor?: string;
+  hoverBorderColor?: string;
   liftDistance?: number;
   borderEffect?: BorderEffect;
+  onPress?: () => void;
+  accessibilityLabel?: string;
 };
 
 export function InteractiveCard({
@@ -27,8 +30,11 @@ export function InteractiveCard({
   style,
   glowColor = DefaultTheme.colors.primary,
   hoverBackgroundColor = DefaultTheme.colors.hover,
+  hoverBorderColor,
   liftDistance = 8,
   borderEffect = 'solid',
+  onPress,
+  accessibilityLabel,
 }: InteractiveCardProps) {
   const progress = useRef(new Animated.Value(0)).current;
   const pulse = useRef(new Animated.Value(0)).current;
@@ -146,11 +152,14 @@ export function InteractiveCard({
   const horizontalLine = Math.max(82, Math.min(cardSize.width * 0.42, 176));
   const verticalLine = Math.max(72, Math.min(cardSize.height * 0.36, 148));
   const oppositeRace = Animated.modulo(Animated.add(race, 2), 4);
-  const trackColor = borderEffect === 'solid' ? glowColor : 'rgba(138,153,0,0.22)';
+  const trackColor =
+    hoverBorderColor ?? (borderEffect === 'solid' ? glowColor : 'rgba(138,153,0,0.22)');
 
   return (
     <Pressable
       style={styles.pressable}
+      accessibilityLabel={accessibilityLabel}
+      onPress={onPress}
       onHoverIn={() => {
         hovered.current = true;
         updateInteraction();

@@ -1,18 +1,22 @@
 import { useEffect, useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import {
+  Image,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 
 import { AppIcon } from '@/components/ui/AppIcon';
 import { MatchaButton } from '@/components/ui/buttons/MatchaButton';
 import { Modal } from '@/components/ui/modals/Modal';
 import { DefaultTheme } from '@/constants/defaultTheme';
 import { buildingToneOf } from '@/constants/roomTheme';
-import {
-  ratingBreakdownOf,
-  reviewDateLabel,
-  type PublicRoomModel,
-  type RoomReviewModel,
-} from '@/models/contentModel';
+import { MAX_REVIEW_COMMENT, type PublicRoomModel } from '@/models/contentModel';
 import { buildingLabel } from '@/models/roomModel';
+import { submitRoomReview } from '@/services/feedbackService';
 
 type RoomDetailsModalProps = {
   visible: boolean;
@@ -21,13 +25,28 @@ type RoomDetailsModalProps = {
   onInquire?: (room: PublicRoomModel) => void;
 };
 
+const RATING_VALUES = [1, 2, 3, 4, 5];
+
 export function RoomDetailsModal({ visible, room, onClose, onInquire }: RoomDetailsModalProps) {
   const { width } = useWindowDimensions();
   const compact = width < DefaultTheme.layout.tablet;
   const [slide, setSlide] = useState(0);
 
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [rating, setRating] = useState(0);
+  const [comment, setComment] = useState('');
+  const [commentFocused, setCommentFocused] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
+  const [submitted, setSubmitted] = useState(false);
+
   useEffect(() => {
     setSlide(0);
+    setComposerOpen(false);
+    setRating(0);
+    setComment('');
+    setReviewError(null);
+    setSubmitted(false);
   }, [room?.roomId, visible]);
 
   if (!room) {
@@ -37,13 +56,37 @@ export function RoomDetailsModal({ visible, room, onClose, onInquire }: RoomDeta
   const photoCount = room.photos.length;
   const activePhoto = room.photos[Math.min(slide, Math.max(photoCount - 1, 0))] ?? null;
   const tone = buildingToneOf(room.building);
-  const breakdown = ratingBreakdownOf(room.reviews);
 
   const step = (direction: -1 | 1) => {
     if (photoCount === 0) {
       return;
     }
     setSlide((current) => (current + direction + photoCount) % photoCount);
+  };
+
+  const handleSubmitReview = async () => {
+    if (submitting) {
+      return;
+    }
+
+    setSubmitting(true);
+    setReviewError(null);
+    try {
+      await submitRoomReview({ roomId: room.roomId, rating, comment });
+      setComposerOpen(false);
+      setSubmitted(true);
+      setRating(0);
+      setComment('');
+    } catch (error) {
+      setReviewError(error instanceof Error ? error.message : 'Your review could not be sent.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleInquire = () => {
+    onClose();
+    onInquire?.(room);
   };
 
   return (
@@ -148,98 +191,109 @@ export function RoomDetailsModal({ visible, room, onClose, onInquire }: RoomDeta
           </View>
         )}
 
-        <View style={styles.reviewsHeader}>
-          <Text style={styles.sectionTitle}>Reviews</Text>
-          <Text style={styles.sectionCount}>{room.reviewCount}</Text>
-        </View>
+        <View style={styles.reviewPanel}>
+          <Text style={styles.sectionTitle}>Rate this room</Text>
+          <Text style={styles.sectionCaption}>
+            Share how it feels to live here. Reviews are posted anonymously and appear once the
+            management team approves them.
+          </Text>
 
-        <View style={[styles.scoreCard, compact && styles.scoreCardCompact]}>
-          <View style={styles.scoreBlock}>
-            <Text style={styles.scoreValue}>{room.ratingLabel}</Text>
-            <Text style={styles.scoreStars}>{starRow(room.rating)}</Text>
-            <Text style={styles.scoreCaption}>
-              {room.reviewCount === 0
-                ? 'No reviews yet'
-                : `${room.reviewCount} review${room.reviewCount === 1 ? '' : 's'}`}
-            </Text>
-          </View>
-          <View style={styles.breakdown}>
-            {breakdown.map((row) => (
-              <View key={row.star} style={styles.breakdownRow}>
-                <Text style={styles.breakdownStar}>{row.star}★</Text>
-                <View style={styles.breakdownTrack}>
-                  <View style={[styles.breakdownFill, { width: `${Math.round(row.share * 100)}%` }]} />
-                </View>
-                <Text style={styles.breakdownCount}>{row.count}</Text>
+          {submitted && (
+            <View style={styles.successNote}>
+              <AppIcon name="check" size={14} tintColor={DefaultTheme.colors.primary} />
+              <Text style={styles.successText}>
+                Thank you! Your review was sent for approval.
+              </Text>
+            </View>
+          )}
+
+          {composerOpen ? (
+            <View style={styles.composer}>
+              <Text style={styles.composerLabel}>Your rating</Text>
+              <View style={styles.starRow}>
+                {RATING_VALUES.map((value) => (
+                  <Pressable
+                    key={value}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: rating === value }}
+                    accessibilityLabel={`${value} star${value === 1 ? '' : 's'}`}
+                    hitSlop={4}
+                    style={styles.starButton}
+                    onPress={() => setRating(value)}>
+                    <Text style={[styles.star, value <= rating && styles.starActive]}>
+                      {value <= rating ? '★' : '☆'}
+                    </Text>
+                  </Pressable>
+                ))}
               </View>
-            ))}
-          </View>
-        </View>
 
-        {room.reviews.length === 0 ? (
-          <View style={styles.emptyReviews}>
-            <AppIcon name="feedback" size={20} tintColor={DefaultTheme.colors.muted} />
-            <Text style={styles.emptyReviewsText}>
-              Be the first to share how it feels to live in this room.
-            </Text>
-          </View>
-        ) : (
-          <View style={styles.reviewList}>
-            {room.reviews.map((review, index) => (
-              <ReviewRow
-                key={review.id}
-                review={review}
-                isLast={index === room.reviews.length - 1}
+              <Text style={styles.composerLabel}>Your comment (optional)</Text>
+              <TextInput
+                value={comment}
+                onChangeText={setComment}
+                onFocus={() => setCommentFocused(true)}
+                onBlur={() => setCommentFocused(false)}
+                multiline
+                maxLength={MAX_REVIEW_COMMENT}
+                accessibilityLabel="Review comment"
+                placeholder="What did you like about this room?"
+                placeholderTextColor="#9A9B95"
+                cursorColor={DefaultTheme.colors.primary}
+                underlineColorAndroid="transparent"
+                style={[styles.commentInput, commentFocused && styles.commentInputFocused]}
               />
-            ))}
-          </View>
-        )}
+              <Text style={styles.counter}>
+                {comment.length}/{MAX_REVIEW_COMMENT}
+              </Text>
+
+              {!!reviewError && <Text style={styles.reviewError}>{reviewError}</Text>}
+
+              <View style={styles.composerActions}>
+                <MatchaButton
+                  label="Cancel"
+                  variant="outline"
+                  disabled={submitting}
+                  style={styles.composerAction}
+                  onPress={() => {
+                    setComposerOpen(false);
+                    setReviewError(null);
+                  }}
+                />
+                <MatchaButton
+                  label={submitting ? 'Sending…' : 'Submit Review'}
+                  disabled={submitting || rating === 0}
+                  style={styles.composerAction}
+                  onPress={handleSubmitReview}
+                />
+              </View>
+            </View>
+          ) : (
+            <MatchaButton
+              label="Add Review"
+              icon="feedback"
+              variant="outline"
+              style={styles.addReviewButton}
+              onPress={() => {
+                setSubmitted(false);
+                setReviewError(null);
+                setComposerOpen(true);
+              }}
+            />
+          )}
+        </View>
 
         <View style={styles.actions}>
           <MatchaButton label="Close" variant="outline" style={styles.action} onPress={onClose} />
-          {room.available && (
-            <MatchaButton
-              label="Inquire Now"
-              icon="email"
-              style={styles.action}
-              onPress={() => onInquire?.(room)}
-            />
-          )}
+          <MatchaButton
+            label="Inquire Now"
+            icon="email"
+            style={styles.action}
+            onPress={handleInquire}
+          />
         </View>
       </View>
     </Modal>
   );
-}
-
-function ReviewRow({ review, isLast }: { review: RoomReviewModel; isLast: boolean }) {
-  return (
-    <View style={[styles.reviewRow, isLast && styles.reviewRowLast]}>
-      <View style={styles.reviewAvatar}>
-        <Text style={styles.reviewAvatarText}>{initialsOf(review.author)}</Text>
-      </View>
-      <View style={styles.reviewBody}>
-        <View style={styles.reviewHeader}>
-          <Text style={styles.reviewAuthor} numberOfLines={1}>
-            {review.author}
-          </Text>
-          <Text style={styles.reviewDate}>{reviewDateLabel(review.createdAt)}</Text>
-        </View>
-        <Text style={styles.reviewStars}>{starRow(review.rating)}</Text>
-        <Text style={styles.reviewComment}>{review.comment}</Text>
-      </View>
-    </View>
-  );
-}
-
-function starRow(rating: number) {
-  const filled = Math.round(rating);
-  return `${'★'.repeat(filled)}${'☆'.repeat(Math.max(0, 5 - filled))}`;
-}
-
-function initialsOf(name: string) {
-  const parts = name.split(' ').filter(Boolean);
-  const source = parts.length > 1 ? `${parts[0][0]}${parts[parts.length - 1][0]}` : name.slice(0, 2);
-  return source.toUpperCase();
 }
 
 const styles = StyleSheet.create({
@@ -434,172 +488,115 @@ const styles = StyleSheet.create({
     fontFamily: DefaultTheme.fonts.bodySemiBold,
     fontSize: 11,
   },
-  reviewsHeader: {
+  reviewPanel: {
     marginTop: 24,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  sectionTitle: {
-    color: DefaultTheme.colors.ink,
-    fontFamily: DefaultTheme.fonts.bodyBold,
-    fontSize: 15,
-  },
-  sectionCount: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: DefaultTheme.radius.pill,
-    backgroundColor: DefaultTheme.colors.cool,
-    color: DefaultTheme.colors.muted,
-    fontFamily: DefaultTheme.fonts.bodyBold,
-    fontSize: 11,
-  },
-  scoreCard: {
-    marginTop: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 18,
     padding: 16,
     borderRadius: DefaultTheme.radius.md,
     backgroundColor: DefaultTheme.colors.cool,
     borderWidth: 1,
     borderColor: DefaultTheme.colors.line,
   },
-  scoreCardCompact: {
-    flexDirection: 'column',
-    alignItems: 'stretch',
-    gap: 14,
-  },
-  scoreBlock: {
-    alignItems: 'center',
-    minWidth: 92,
-  },
-  scoreValue: {
+  sectionTitle: {
     color: DefaultTheme.colors.ink,
     fontFamily: DefaultTheme.fonts.bodyBold,
-    fontSize: 30,
+    fontSize: 15,
   },
-  scoreStars: {
-    marginTop: 2,
-    color: '#C98A1E',
-    fontFamily: DefaultTheme.fonts.bodyBold,
-    fontSize: 13,
-  },
-  scoreCaption: {
-    marginTop: 4,
+  sectionCaption: {
+    marginTop: 5,
     color: DefaultTheme.colors.muted,
     fontFamily: DefaultTheme.fonts.bodyMedium,
-    fontSize: 11,
+    fontSize: 12,
+    lineHeight: 18,
   },
-  breakdown: {
-    flex: 1,
-    minWidth: 0,
-    gap: 5,
-  },
-  breakdownRow: {
+  successNote: {
+    marginTop: 12,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: DefaultTheme.radius.sm,
+    backgroundColor: DefaultTheme.colors.softOlive,
+    borderWidth: 1,
+    borderColor: 'rgba(138, 153, 0, 0.28)',
   },
-  breakdownStar: {
-    width: 24,
+  successText: {
+    flex: 1,
+    color: '#5F6A00',
+    fontFamily: DefaultTheme.fonts.bodySemiBold,
+    fontSize: 12,
+  },
+  addReviewButton: {
+    alignSelf: 'flex-start',
+    marginTop: 14,
+  },
+  composer: {
+    marginTop: 14,
+  },
+  composerLabel: {
+    marginBottom: 6,
     color: DefaultTheme.colors.muted,
     fontFamily: DefaultTheme.fonts.bodySemiBold,
     fontSize: 10.5,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
   },
-  breakdownTrack: {
-    flex: 1,
-    height: 6,
-    borderRadius: 3,
-    overflow: 'hidden',
-    backgroundColor: '#E2E4E7',
+  starRow: {
+    flexDirection: 'row',
+    gap: 4,
+    marginBottom: 14,
   },
-  breakdownFill: {
-    height: '100%',
-    borderRadius: 3,
-    backgroundColor: DefaultTheme.colors.primary,
+  starButton: {
+    paddingHorizontal: 2,
   },
-  breakdownCount: {
-    width: 18,
+  star: {
+    color: '#C3C4BE',
+    fontFamily: DefaultTheme.fonts.bodyBold,
+    fontSize: 27,
+    lineHeight: 32,
+  },
+  starActive: {
+    color: '#C98A1E',
+  },
+  commentInput: {
+    minHeight: 92,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: DefaultTheme.radius.sm,
+    borderWidth: 1.5,
+    borderColor: DefaultTheme.colors.line,
+    backgroundColor: DefaultTheme.colors.white,
+    color: DefaultTheme.colors.ink,
+    fontFamily: DefaultTheme.fonts.bodyMedium,
+    fontSize: 13,
+    lineHeight: 19,
+    textAlignVertical: 'top',
+  },
+  commentInputFocused: {
+    borderColor: DefaultTheme.colors.primary,
+  },
+  counter: {
+    marginTop: 5,
     textAlign: 'right',
     color: DefaultTheme.colors.muted,
     fontFamily: DefaultTheme.fonts.bodyMedium,
     fontSize: 10.5,
   },
-  emptyReviews: {
-    marginTop: 12,
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 22,
-    borderRadius: DefaultTheme.radius.sm,
-    borderWidth: 1,
-    borderColor: DefaultTheme.colors.line,
-  },
-  emptyReviewsText: {
-    color: DefaultTheme.colors.muted,
+  reviewError: {
+    marginTop: 8,
+    color: '#D64545',
     fontFamily: DefaultTheme.fonts.bodyMedium,
-    fontSize: 12.5,
+    fontSize: 12,
   },
-  reviewList: {
-    marginTop: 6,
-  },
-  reviewRow: {
+  composerActions: {
+    marginTop: 14,
     flexDirection: 'row',
-    gap: 12,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: DefaultTheme.colors.line,
-  },
-  reviewRowLast: {
-    borderBottomWidth: 0,
-  },
-  reviewAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: DefaultTheme.radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: DefaultTheme.colors.primary,
-  },
-  reviewAvatarText: {
-    color: DefaultTheme.colors.white,
-    fontFamily: DefaultTheme.fonts.bodyBold,
-    fontSize: 12.5,
-  },
-  reviewBody: {
-    flex: 1,
-    minWidth: 0,
-  },
-  reviewHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     gap: 10,
   },
-  reviewAuthor: {
+  composerAction: {
     flex: 1,
-    minWidth: 0,
-    color: DefaultTheme.colors.ink,
-    fontFamily: DefaultTheme.fonts.bodySemiBold,
-    fontSize: 13.5,
-  },
-  reviewDate: {
-    color: DefaultTheme.colors.muted,
-    fontFamily: DefaultTheme.fonts.bodyMedium,
-    fontSize: 11,
-  },
-  reviewStars: {
-    marginTop: 3,
-    color: '#C98A1E',
-    fontFamily: DefaultTheme.fonts.bodyBold,
-    fontSize: 11.5,
-  },
-  reviewComment: {
-    marginTop: 5,
-    color: DefaultTheme.colors.muted,
-    fontFamily: DefaultTheme.fonts.body,
-    fontSize: 12.5,
-    lineHeight: 19,
+    minHeight: 44,
+    paddingHorizontal: 12,
   },
   actions: {
     marginTop: 24,

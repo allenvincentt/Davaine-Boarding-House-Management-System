@@ -12,11 +12,9 @@ import {
 
 import { MainContentArea } from '@/components/layout/MainContentArea';
 import { AppIcon } from '@/components/ui/AppIcon';
-import { GradientButton } from '@/components/ui/buttons/GradientButton';
 import { MatchaButton } from '@/components/ui/buttons/MatchaButton';
 import { PageFabStack, usePageScrollNavigator } from '@/components/ui/buttons/PageFabStack';
 import { Card } from '@/components/ui/cards/Card';
-import { KPICard, KPICardsRow } from '@/components/ui/cards/KPICards';
 import { ConfirmDialog } from '@/components/ui/modals/ConfirmDialog';
 import { SearchField } from '@/components/ui/SearchField';
 import { DefaultTheme } from '@/constants/defaultTheme';
@@ -25,7 +23,7 @@ import {
   MAX_CAROUSEL_SLIDES,
   MAX_ROOM_CAPACITY,
   MAX_ROOM_PHOTOS,
-  coverPhotoOf,
+  defaultRoomContent,
   type CarouselSlideModel,
   type RoomContentModel,
 } from '@/models/contentModel';
@@ -39,22 +37,33 @@ import {
 import { useAuth } from '@/providers/AuthProvider';
 import { can } from '@/services/accessControl';
 import {
-  addCarouselSlide,
-  addRoomPhoto,
   listCarouselSlides,
   listRoomContent,
-  moveCarouselSlide,
-  removeCarouselSlide,
-  removeRoomPhoto,
-  setRoomCoverPhoto,
-  updateRoomDetails,
+  saveCarousel,
+  saveRoomContent,
 } from '@/services/contentService';
-import { pickPhotoFromLibrary } from '@/services/photoPickerService';
+import { pickPhotoFromLibrary, type PickedPhoto } from '@/services/photoPickerService';
 import { listRooms } from '@/services/roomManagementService';
 
-type PendingRemoval =
-  | { kind: 'slide'; id: string }
-  | { kind: 'photo'; roomId: string; id: string };
+type DraftItem = {
+  key: string;
+  uri: string;
+  existingId: string | null;
+  photo: PickedPhoto | null;
+};
+
+type PendingRemoval = { kind: 'slide' | 'photo'; key: string };
+
+function toDraft(item: { id: string; uri: string }): DraftItem {
+  return { key: item.id, uri: item.uri, existingId: item.id, photo: null };
+}
+
+function sameOrder(draft: DraftItem[], saved: { id: string }[]) {
+  return (
+    draft.length === saved.length &&
+    draft.every((item, index) => item.existingId === saved[index]?.id)
+  );
+}
 
 export default function ContentPage() {
   const { width } = useWindowDimensions();
@@ -71,6 +80,10 @@ export default function ContentPage() {
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
 
+  const [carouselDraft, setCarouselDraft] = useState<DraftItem[]>([]);
+  const [photoDraft, setPhotoDraft] = useState<DraftItem[]>([]);
+  const [coverKey, setCoverKey] = useState<string | null>(null);
+
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -83,6 +96,12 @@ export default function ContentPage() {
   const [detailsDirty, setDetailsDirty] = useState(false);
 
   const activeRef = useRef(true);
+  const keySequence = useRef(0);
+
+  const nextKey = useCallback(() => {
+    keySequence.current += 1;
+    return `draft-${keySequence.current}`;
+  }, []);
 
   useEffect(() => {
     activeRef.current = true;
@@ -106,9 +125,16 @@ export default function ContentPage() {
       }
 
       const sorted = sortRooms(roomRows);
+      const saved = Object.fromEntries(contentRows.map((row) => [row.roomId, row]));
+
       setRooms(sorted);
       setSlides(slideRows);
-      setContent(Object.fromEntries(contentRows.map((row) => [row.roomId, row])));
+      setCarouselDraft(slideRows.map(toDraft));
+      setContent(
+        Object.fromEntries(
+          sorted.map((room) => [room.id, saved[room.id] ?? defaultRoomContent(room)]),
+        ),
+      );
       setSelectedRoomId((current) => current ?? sorted[0]?.id ?? null);
     } catch (error) {
       if (activeRef.current) {
@@ -135,6 +161,10 @@ export default function ContentPage() {
     setCapacity(String(selectedContent.capacity));
     setDescription(selectedContent.description);
     setAmenities(selectedContent.amenities.join(', '));
+    setPhotoDraft(selectedContent.photos.map(toDraft));
+    setCoverKey(
+      selectedContent.coverPhotoId ?? selectedContent.photos[0]?.id ?? null,
+    );
     setDetailsDirty(false);
   }, [selectedContent]);
 
@@ -150,11 +180,16 @@ export default function ContentPage() {
     );
   }, [rooms, query]);
 
-  const totalRoomPhotos = Object.values(content).reduce(
-    (sum, item) => sum + item.photos.length,
-    0,
-  );
-  const roomsWithPhotos = Object.values(content).filter((item) => item.photos.length > 0).length;
+  const carouselDirty = !sameOrder(carouselDraft, slides);
+  const photosDirty =
+    !!selectedContent &&
+    (!sameOrder(photoDraft, selectedContent.photos) ||
+      coverKey !== (selectedContent.coverPhotoId ?? selectedContent.photos[0]?.id ?? null));
+  const roomDirty = detailsDirty || photosDirty;
+
+  const pendingSlideCount = carouselDraft.filter((item) => item.existingId === null).length;
+  const cover =
+    photoDraft.find((item) => item.key === coverKey) ?? photoDraft[0] ?? null;
 
   const run = useCallback(async (action: () => Promise<string>) => {
     setBusy(true);
@@ -178,37 +213,47 @@ export default function ContentPage() {
 
   const handleAddSlide = useCallback(() => {
     run(async () => {
-      const uri = await pickPhotoFromLibrary();
-      if (!uri) {
+      const photo = await pickPhotoFromLibrary();
+      if (!photo) {
         return 'No photo was selected.';
       }
-      const rows = await addCarouselSlide(uri);
-      setSlides(rows);
-      return 'The photo was added to the landing carousel.';
+      setCarouselDraft((current) => [
+        ...current,
+        { key: nextKey(), uri: photo.uri, existingId: null, photo },
+      ]);
+      return 'Photo staged. Press Save Carousel to publish it.';
     });
-  }, [run]);
+  }, [run, nextKey]);
 
-  const handleMoveSlide = useCallback(
-    (slideId: string, direction: -1 | 1) => {
-      run(async () => {
-        const rows = await moveCarouselSlide(slideId, direction);
-        setSlides(rows);
-        return 'The carousel order was updated.';
-      });
-    },
-    [run],
-  );
+  const handleMoveSlide = useCallback((key: string, direction: -1 | 1) => {
+    setCarouselDraft((current) => {
+      const index = current.findIndex((item) => item.key === key);
+      const target = index + direction;
+      if (index < 0 || target < 0 || target >= current.length) {
+        return current;
+      }
+      const next = [...current];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  }, []);
 
-  const handleRemoveSlide = useCallback(
-    (slideId: string) => {
-      run(async () => {
-        const rows = await removeCarouselSlide(slideId);
-        setSlides(rows);
-        return 'The photo was removed from the carousel.';
-      });
-    },
-    [run],
-  );
+  const handleSaveCarousel = useCallback(() => {
+    run(async () => {
+      const rows = await saveCarousel(
+        carouselDraft.map(({ key, existingId, photo }) => ({ key, existingId, photo })),
+      );
+      setSlides(rows);
+      setCarouselDraft(rows.map(toDraft));
+      return 'The landing carousel was updated.';
+    });
+  }, [run, carouselDraft]);
+
+  const handleDiscardCarousel = useCallback(() => {
+    setCarouselDraft(slides.map(toDraft));
+    setNotice(null);
+    setActionError(null);
+  }, [slides]);
 
   const applyContent = useCallback((next: RoomContentModel) => {
     setContent((current) => ({ ...current, [next.roomId]: next }));
@@ -219,66 +264,62 @@ export default function ContentPage() {
       return;
     }
     run(async () => {
-      const uri = await pickPhotoFromLibrary();
-      if (!uri) {
+      const photo = await pickPhotoFromLibrary();
+      if (!photo) {
         return 'No photo was selected.';
       }
-      const next = await addRoomPhoto(selectedRoom.id, uri);
-      applyContent(next);
-      return `The photo was added to ${roomLabel(selectedRoom)}.`;
+      const key = nextKey();
+      setPhotoDraft((current) => [
+        ...current,
+        { key, uri: photo.uri, existingId: null, photo },
+      ]);
+      setCoverKey((current) => current ?? key);
+      return 'Photo staged. Press Save Room Details to publish it.';
     });
-  }, [run, selectedRoom, applyContent]);
+  }, [run, selectedRoom, nextKey]);
 
-  const handleSetCover = useCallback(
-    (roomId: string, photoId: string) => {
-      run(async () => {
-        const next = await setRoomCoverPhoto(roomId, photoId);
-        applyContent(next);
-        return 'The room card photo was updated.';
-      });
-    },
-    [run, applyContent],
-  );
-
-  const handleRemovePhoto = useCallback(
-    (roomId: string, photoId: string) => {
-      run(async () => {
-        const next = await removeRoomPhoto(roomId, photoId);
-        applyContent(next);
-        return 'The photo was removed from the room slider.';
-      });
-    },
-    [run, applyContent],
-  );
+  const handleRemoveDraftPhoto = useCallback((key: string) => {
+    setPhotoDraft((current) => current.filter((item) => item.key !== key));
+    setCoverKey((current) => (current === key ? null : current));
+  }, []);
 
   const handleSaveDetails = useCallback(() => {
     if (!selectedRoom) {
       return;
     }
     run(async () => {
-      const next = await updateRoomDetails(selectedRoom.id, {
+      const next = await saveRoomContent(selectedRoom.id, {
         description,
         capacity: Number(capacity.replace(/[^\d]/g, '')),
-        amenities: amenities.split(',').map((item) => item.trim()),
+        amenities: amenities.split(','),
+        photos: photoDraft.map(({ key, existingId, photo }) => ({ key, existingId, photo })),
+        coverKey,
       });
       applyContent(next);
       setDetailsDirty(false);
-      return `${roomLabel(selectedRoom)} details were saved.`;
+      return `${roomLabel(selectedRoom)} was saved.`;
     });
-  }, [run, selectedRoom, description, capacity, amenities, applyContent]);
+  }, [
+    run,
+    selectedRoom,
+    description,
+    capacity,
+    amenities,
+    photoDraft,
+    coverKey,
+    applyContent,
+  ]);
 
   const confirmRemoval = useCallback(() => {
     if (!pendingRemoval) {
       return;
     }
     if (pendingRemoval.kind === 'slide') {
-      handleRemoveSlide(pendingRemoval.id);
+      setCarouselDraft((current) => current.filter((item) => item.key !== pendingRemoval.key));
       return;
     }
-    handleRemovePhoto(pendingRemoval.roomId, pendingRemoval.id);
-  }, [pendingRemoval, handleRemoveSlide, handleRemovePhoto]);
-
-  const cover = selectedContent ? coverPhotoOf(selectedContent) : null;
+    handleRemoveDraftPhoto(pendingRemoval.key);
+  }, [pendingRemoval, handleRemoveDraftPhoto]);
 
   return (
     <View style={styles.page}>
@@ -292,59 +333,7 @@ export default function ContentPage() {
                 : 'Viewing the website photos and copy (read-only).'}
             </Text>
           </View>
-          {!compact && canEdit && (
-            <GradientButton
-              accessibilityLabel="Add carousel photo"
-              style={styles.addButton}
-              onPress={handleAddSlide}>
-              <AppIcon name="plus" size={15} tintColor={DefaultTheme.colors.white} />
-              <Text style={styles.addButtonLabel}>Add Carousel Photo</Text>
-            </GradientButton>
-          )}
         </View>
-
-        <KPICardsRow>
-          <KPICard
-            label="Carousel Photos"
-            value={slides.length}
-            icon="document"
-            iconColor={DefaultTheme.colors.primary}
-            iconBackground={DefaultTheme.colors.softOlive}
-            accentColor={DefaultTheme.colors.primary}
-            caption={`of ${MAX_CAROUSEL_SLIDES} slots used`}
-            progress={slides.length / MAX_CAROUSEL_SLIDES}
-          />
-          <KPICard
-            label="Room Photos"
-            value={totalRoomPhotos}
-            icon="rooms"
-            iconColor="#4EA4E5"
-            iconBackground={DefaultTheme.colors.softBlue}
-            accentColor="#4EA4E5"
-            caption={`Across ${rooms.length} room(s)`}
-            progress={1}
-          />
-          <KPICard
-            label="Rooms With Photos"
-            value={roomsWithPhotos}
-            icon="eye"
-            iconColor="#2E8A57"
-            iconBackground="#E4F5EA"
-            accentColor="#2E8A57"
-            caption={`of ${rooms.length} room(s) published`}
-            progress={rooms.length === 0 ? 0 : roomsWithPhotos / rooms.length}
-          />
-          <KPICard
-            label="Photos Per Room"
-            value={MAX_ROOM_PHOTOS}
-            icon="chart"
-            iconColor="#7C5CD6"
-            iconBackground="#EDE7F6"
-            accentColor="#7C5CD6"
-            caption="Maximum slider photos"
-            progress={1}
-          />
-        </KPICardsRow>
 
         {(notice || actionError) && (
           <Banner
@@ -368,48 +357,77 @@ export default function ContentPage() {
                 label="Add Photo"
                 icon="plus"
                 variant="outline"
-                disabled={busy || slides.length >= MAX_CAROUSEL_SLIDES}
+                disabled={busy || carouselDraft.length >= MAX_CAROUSEL_SLIDES}
                 onPress={handleAddSlide}
               />
             ) : undefined
           }>
-          {loading && slides.length === 0 ? (
+          {loading && carouselDraft.length === 0 ? (
             <LoadingBlock label="Loading carousel photos…" />
-          ) : slides.length === 0 ? (
+          ) : carouselDraft.length === 0 ? (
             <EmptyBlock text="No carousel photos yet. Upload one to fill the home section." />
           ) : (
             <View style={styles.slideGrid}>
-              {slides.map((slide, index) => (
-                <View key={slide.id} style={styles.slideTile}>
-                  <Image source={{ uri: slide.uri }} style={styles.slideImage} resizeMode="cover" />
+              {carouselDraft.map((item, index) => (
+                <View key={item.key} style={styles.slideTile}>
+                  <Image source={{ uri: item.uri }} style={styles.slideImage} resizeMode="cover" />
                   <View style={styles.slideOrder}>
                     <Text style={styles.slideOrderText}>{index + 1}</Text>
                   </View>
+                  {item.existingId === null && (
+                    <View style={styles.pendingBadge}>
+                      <Text style={styles.pendingBadgeText}>NEW</Text>
+                    </View>
+                  )}
                   {canEdit && (
                     <View style={styles.slideActions}>
                       <TileButton
                         icon="chevronLeft"
                         label="Move earlier"
                         disabled={busy || index === 0}
-                        onPress={() => handleMoveSlide(slide.id, -1)}
+                        onPress={() => handleMoveSlide(item.key, -1)}
                       />
                       <TileButton
                         icon="chevronRight"
                         label="Move later"
-                        disabled={busy || index === slides.length - 1}
-                        onPress={() => handleMoveSlide(slide.id, 1)}
+                        disabled={busy || index === carouselDraft.length - 1}
+                        onPress={() => handleMoveSlide(item.key, 1)}
                       />
                       <TileButton
                         icon="trash"
                         label="Remove photo"
                         destructive
                         disabled={busy}
-                        onPress={() => setPendingRemoval({ kind: 'slide', id: slide.id })}
+                        onPress={() => setPendingRemoval({ kind: 'slide', key: item.key })}
                       />
                     </View>
                   )}
                 </View>
               ))}
+            </View>
+          )}
+
+          {canEdit && carouselDirty && (
+            <View style={styles.confirmBar}>
+              <Text style={styles.confirmHint}>
+                {pendingSlideCount > 0
+                  ? `${pendingSlideCount} new photo${pendingSlideCount === 1 ? '' : 's'} waiting to be published.`
+                  : 'Carousel changes are not published yet.'}
+              </Text>
+              <View style={styles.confirmActions}>
+                <MatchaButton
+                  label="Discard"
+                  variant="outline"
+                  disabled={busy}
+                  onPress={handleDiscardCarousel}
+                />
+                <MatchaButton
+                  label={busy ? 'Saving…' : 'Save Carousel'}
+                  icon="check"
+                  disabled={busy}
+                  onPress={handleSaveCarousel}
+                />
+              </View>
             </View>
           )}
         </Card>
@@ -434,7 +452,8 @@ export default function ContentPage() {
               filteredRooms.map((room) => {
                 const tone = buildingToneOf(room.building);
                 const active = room.id === selectedRoomId;
-                const photoCount = content[room.id]?.photos.length ?? 0;
+                const photoCount =
+                  active ? photoDraft.length : (content[room.id]?.photos.length ?? 0);
 
                 return (
                   <Pressable
@@ -491,15 +510,16 @@ export default function ContentPage() {
                 <View style={styles.coverCopy}>
                   <Text style={styles.editorTitle}>{roomLabel(selectedRoom)}</Text>
                   <Text style={styles.editorCaption}>
-                    {buildingLabel(selectedRoom.building)} · The first photo is used on the landing
-                    room card, and every photo appears in the details slider.
+                    {buildingLabel(selectedRoom.building)} · The cover photo is used on the landing
+                    room card, and every photo appears in the details slider. Photo changes are only
+                    published once you press Save Room Details.
                   </Text>
                   {canEdit && (
                     <MatchaButton
                       label="Upload Photo"
                       icon="plus"
                       variant="outline"
-                      disabled={busy || selectedContent.photos.length >= MAX_ROOM_PHOTOS}
+                      disabled={busy || photoDraft.length >= MAX_ROOM_PHOTOS}
                       style={styles.uploadButton}
                       onPress={handleAddRoomPhoto}
                     />
@@ -507,19 +527,19 @@ export default function ContentPage() {
                 </View>
               </View>
 
-              {selectedContent.photos.length === 0 ? (
+              {photoDraft.length === 0 ? (
                 <EmptyBlock text="This room has no photos yet. Upload one so it can appear on the website." />
               ) : (
                 <View style={styles.photoGrid}>
-                  {selectedContent.photos.map((photo) => {
-                    const isCover = cover?.id === photo.id;
+                  {photoDraft.map((item) => {
+                    const isCover = cover?.key === item.key;
 
                     return (
                       <View
-                        key={photo.id}
+                        key={item.key}
                         style={[styles.photoTile, isCover && styles.photoTileCover]}>
                         <Image
-                          source={{ uri: photo.uri }}
+                          source={{ uri: item.uri }}
                           style={styles.photoImage}
                           resizeMode="cover"
                         />
@@ -529,26 +549,25 @@ export default function ContentPage() {
                             <Text style={styles.coverBadgeText}>Cover</Text>
                           </View>
                         )}
+                        {!isCover && item.existingId === null && (
+                          <View style={styles.pendingBadge}>
+                            <Text style={styles.pendingBadgeText}>NEW</Text>
+                          </View>
+                        )}
                         {canEdit && (
                           <View style={styles.slideActions}>
                             <TileButton
                               icon="eye"
                               label="Use as room card photo"
                               disabled={busy || isCover}
-                              onPress={() => handleSetCover(selectedRoom.id, photo.id)}
+                              onPress={() => setCoverKey(item.key)}
                             />
                             <TileButton
                               icon="trash"
                               label="Remove photo"
                               destructive
                               disabled={busy}
-                              onPress={() =>
-                                setPendingRemoval({
-                                  kind: 'photo',
-                                  roomId: selectedRoom.id,
-                                  id: photo.id,
-                                })
-                              }
+                              onPress={() => setPendingRemoval({ kind: 'photo', key: item.key })}
                             />
                           </View>
                         )}
@@ -589,13 +608,19 @@ export default function ContentPage() {
                   }}
                 />
                 {canEdit && (
-                  <MatchaButton
-                    label={busy ? 'Saving…' : 'Save Room Details'}
-                    icon="check"
-                    disabled={busy || !detailsDirty}
-                    style={styles.saveButton}
-                    onPress={handleSaveDetails}
-                  />
+                  <View style={styles.saveRow}>
+                    <MatchaButton
+                      label={busy ? 'Saving…' : 'Save Room Details'}
+                      icon="check"
+                      disabled={busy || !roomDirty}
+                      onPress={handleSaveDetails}
+                    />
+                    {roomDirty && (
+                      <Text style={styles.confirmHint}>
+                        Unsaved changes. Switching rooms discards them.
+                      </Text>
+                    )}
+                  </View>
                 )}
               </View>
             </View>
@@ -603,15 +628,7 @@ export default function ContentPage() {
         </Card>
       </MainContentArea>
 
-      {compact && (
-        <PageFabStack
-          navigator={scrollNavigator}
-          primaryIcon={canEdit ? 'plus' : undefined}
-          primaryLabel="Add carousel photo"
-          onPrimaryPress={canEdit ? handleAddSlide : undefined}
-          downLabel="To Room Photos"
-        />
-      )}
+      {compact && <PageFabStack navigator={scrollNavigator} downLabel="To Room Photos" />}
 
       <ConfirmDialog
         visible={pendingRemoval !== null}
@@ -620,8 +637,8 @@ export default function ContentPage() {
         title="Remove this photo?"
         message={
           pendingRemoval?.kind === 'slide'
-            ? 'The photo will disappear from the landing carousel.'
-            : 'The photo will disappear from the room card and the details slider.'
+            ? 'The photo leaves the carousel once you press Save Carousel.'
+            : 'The photo leaves the room card and the details slider once you press Save Room Details.'
         }
         confirmLabel="Remove Photo"
         onConfirm={confirmRemoval}
@@ -776,15 +793,6 @@ const styles = StyleSheet.create({
     fontFamily: DefaultTheme.fonts.bodyMedium,
     fontSize: 13,
   },
-  addButton: {
-    minHeight: 44,
-    paddingHorizontal: 22,
-  },
-  addButtonLabel: {
-    color: DefaultTheme.colors.white,
-    fontFamily: DefaultTheme.fonts.bodyBold,
-    fontSize: 14,
-  },
   card: {
     width: '100%',
   },
@@ -825,6 +833,21 @@ const styles = StyleSheet.create({
     fontSize: 10,
     textAlign: 'center',
   },
+  pendingBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: DefaultTheme.radius.pill,
+    backgroundColor: '#C98A1E',
+  },
+  pendingBadgeText: {
+    color: DefaultTheme.colors.white,
+    fontFamily: DefaultTheme.fonts.bodyBold,
+    fontSize: 8.5,
+    letterSpacing: 0.4,
+  },
   slideActions: {
     position: 'absolute',
     right: 6,
@@ -842,6 +865,29 @@ const styles = StyleSheet.create({
   },
   tileButtonDisabled: {
     opacity: 0.4,
+  },
+  confirmBar: {
+    marginTop: 16,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: DefaultTheme.colors.line,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  confirmHint: {
+    flexShrink: 1,
+    minWidth: 180,
+    color: '#8A6A1C',
+    fontFamily: DefaultTheme.fonts.bodySemiBold,
+    fontSize: 12.5,
+  },
+  confirmActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
   },
   roomChips: {
     flexDirection: 'row',
@@ -1030,8 +1076,11 @@ const styles = StyleSheet.create({
     backgroundColor: DefaultTheme.colors.cool,
     color: DefaultTheme.colors.muted,
   },
-  saveButton: {
-    alignSelf: 'flex-start',
+  saveRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 12,
   },
   loadingBlock: {
     paddingVertical: 30,
