@@ -35,7 +35,7 @@ import { GradientButton } from '@/components/ui/buttons/GradientButton';
 import { ForgotPasswordModal } from '@/app/auth/ForgotPasswordModal';
 import { GuessModeModal } from '@/app/auth/GuessModeModal';
 import { SignInModal } from '@/app/auth/SignInModal';
-import { useAuth } from '@/providers/AuthProvider';
+import { useAuth, type SessionResumeResult } from '@/providers/AuthProvider';
 import { isGuestRole } from '@/services/accessControl';
 
 type NavBarProps = {
@@ -52,7 +52,14 @@ export function NavBar({ activeSection, onNavigate, scrollY }: NavBarProps) {
   const { width } = useWindowDimensions();
   const { top: safeAreaTop, bottom: safeAreaBottom } = useSafeAreaInsets();
   const router = useRouter();
-  const { session, isGuest, biometricAvailable, signInWithBiometrics } = useAuth();
+  const {
+    session,
+    isGuest,
+    biometricAvailable,
+    signInWithBiometrics,
+    sessionVerified,
+    resumeSession,
+  } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const [signInOpen, setSignInOpen] = useState(false);
   const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
@@ -61,11 +68,36 @@ export function NavBar({ activeSection, onNavigate, scrollY }: NavBarProps) {
 
   const handleSignInPress = useCallback(async () => {
     if (session) {
-      if (isGuest) {
-        setGuestModeOpen(true);
+      const needsUnlock = !sessionVerified;
+      if (needsUnlock) {
+        setAutoUnlocking(true);
+      }
+
+      let outcome: SessionResumeResult;
+      try {
+        outcome = await resumeSession();
+      } catch {
+        outcome = 'sign-in-required';
+      } finally {
+        if (needsUnlock) {
+          setAutoUnlocking(false);
+        }
+      }
+
+      if (outcome === 'cancelled') {
         return;
       }
-      router.push('/admin-pages/DashboardPage');
+
+      if (outcome === 'ready') {
+        if (isGuest) {
+          setGuestModeOpen(true);
+          return;
+        }
+        router.push('/admin-pages/DashboardPage');
+        return;
+      }
+
+      setSignInOpen(true);
       return;
     }
 
@@ -87,7 +119,15 @@ export function NavBar({ activeSection, onNavigate, scrollY }: NavBarProps) {
     }
 
     setSignInOpen(true);
-  }, [session, isGuest, router, biometricAvailable, signInWithBiometrics]);
+  }, [
+    session,
+    isGuest,
+    router,
+    biometricAvailable,
+    signInWithBiometrics,
+    sessionVerified,
+    resumeSession,
+  ]);
 
   const handleForgotPassword = useCallback(() => {
     setSignInOpen(false);

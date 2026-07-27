@@ -97,6 +97,21 @@ export function ratingLabelOf(rating: number) {
   return rating > 0 ? rating.toFixed(1) : '—';
 }
 
+export function ratingBreakdownOf(reviews: RoomReviewModel[]) {
+  return [5, 4, 3, 2, 1].map((value) => {
+    const count = reviews.filter((review) => Math.round(review.rating) === value).length;
+    return {
+      value,
+      count,
+      share: reviews.length === 0 ? 0 : count / reviews.length,
+    };
+  });
+}
+
+export function reviewCountLabel(total: number) {
+  return `${total} review${total === 1 ? '' : 's'}`;
+}
+
 export function reviewSummaryOf(reviews: RoomReviewModel[]) {
   const positive = reviews.filter((review) => review.rating >= 4).length;
   const negative = reviews.filter((review) => review.rating <= 2).length;

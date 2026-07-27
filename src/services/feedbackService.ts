@@ -62,6 +62,21 @@ export async function listApprovedReviews(): Promise<RoomReviewModel[]> {
   return (data ?? []).map(toReviewModel);
 }
 
+export async function listApprovedRoomReviews(roomId: string): Promise<RoomReviewModel[]> {
+  const { data, error } = await reviewTable()
+    .select(REVIEW_COLUMNS)
+    .eq('room_id', roomId)
+    .eq('status', 'Approved')
+    .order('created_at', { ascending: false })
+    .returns<RoomReviewRow[]>();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return (data ?? []).map(toReviewModel);
+}
+
 export async function submitRoomReview(input: SubmitReviewInput): Promise<RoomReviewModel> {
   const rating = Math.round(input.rating);
   const comment = input.comment.trim();

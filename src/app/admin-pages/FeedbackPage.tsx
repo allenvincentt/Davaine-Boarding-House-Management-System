@@ -1,3 +1,4 @@
+import { useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -58,12 +59,14 @@ const statusTone: Record<ReviewStatus, { color: string; background: string }> = 
 const POSITIVE_COLOR = '#2E8A57';
 const NEGATIVE_COLOR = '#C4453B';
 const COMMENT_COLUMN_WIDTH = 720;
+const HIGHLIGHT_DURATION = 6000;
 
 export default function FeedbackPage() {
   const { width } = useWindowDimensions();
   const compact = width < DefaultTheme.layout.compactNavigation;
   const { profile } = useAuth();
   const scrollNavigator = usePageScrollNavigator();
+  const params = useLocalSearchParams<{ review?: string }>();
 
   const role = profile?.userRole ?? null;
   const canModerate = can(role, 'update', 'feedback');
@@ -83,6 +86,8 @@ export default function FeedbackPage() {
   const [actionsAnchor, setActionsAnchor] = useState<SelectAnchor | null>(null);
   const [actionsOpen, setActionsOpen] = useState(false);
 
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+
   const activeRef = useRef(true);
 
   useEffect(() => {
@@ -91,6 +96,22 @@ export default function FeedbackPage() {
       activeRef.current = false;
     };
   }, []);
+
+  const requestedReview = typeof params.review === 'string' ? params.review : null;
+
+  useEffect(() => {
+    if (!requestedReview) {
+      setHighlightId(null);
+      return;
+    }
+
+    setHighlightId(requestedReview);
+    setQuery('');
+    setStatusFilter('All');
+
+    const timer = setTimeout(() => setHighlightId(null), HIGHLIGHT_DURATION);
+    return () => clearTimeout(timer);
+  }, [requestedReview]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -367,6 +388,7 @@ export default function FeedbackPage() {
                       review={review}
                       tag={tagOf(review.roomId)}
                       isLast={index === filtered.length - 1}
+                      highlighted={review.id === highlightId}
                       showActions={canModerate}
                       onOpenActions={(anchor) => openActions(review, anchor)}
                     />
@@ -379,6 +401,7 @@ export default function FeedbackPage() {
                 data={filtered}
                 keyExtractor={(row) => row.id}
                 emptyLabel="No reviews match your filters."
+                highlightKey={highlightId}
               />
             )}
           </View>
@@ -552,17 +575,24 @@ function ReviewListItem({
   review,
   tag,
   isLast,
+  highlighted,
   showActions,
   onOpenActions,
 }: {
   review: RoomReviewModel;
   tag: RoomTag;
   isLast: boolean;
+  highlighted: boolean;
   showActions: boolean;
   onOpenActions: (anchor: SelectAnchor) => void;
 }) {
   return (
-    <View style={[styles.mobileRow, isLast && styles.mobileRowLast]}>
+    <View
+      style={[
+        styles.mobileRow,
+        isLast && styles.mobileRowLast,
+        highlighted && styles.mobileRowHighlighted,
+      ]}>
       <View style={styles.mobileBody}>
         <View style={styles.mobileHeader}>
           <Text style={styles.roomText} numberOfLines={1}>
@@ -818,6 +848,13 @@ const styles = StyleSheet.create({
   mobileRowLast: {
     borderBottomWidth: 0,
     paddingBottom: 0,
+  },
+  mobileRowHighlighted: {
+    paddingHorizontal: 12,
+    marginHorizontal: -12,
+    borderRadius: DefaultTheme.radius.sm,
+    borderBottomColor: 'transparent',
+    backgroundColor: DefaultTheme.colors.softGold,
   },
   mobileBody: {
     flex: 1,

@@ -1,4 +1,4 @@
-export type NotificationType = 'welcome' | 'role_change' | 'password_change';
+export type NotificationType = 'welcome' | 'role_change' | 'password_change' | 'review';
 
 export type NotificationModel = {
   id: string;
@@ -49,6 +49,15 @@ export function toPushPayload(notification: NotificationModel): NotificationPush
     tag: notification.id,
     data: { notificationId: notification.id, type: notification.type },
   };
+}
+
+export function reviewIdOf(notification: NotificationModel): string | null {
+  if (notification.type !== 'review') {
+    return null;
+  }
+
+  const value = notification.metadata.reviewId;
+  return typeof value === 'string' && value.length > 0 ? value : null;
 }
 
 export function relativeTimeFrom(iso: string, now: number = Date.now()): string {

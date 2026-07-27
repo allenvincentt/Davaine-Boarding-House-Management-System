@@ -20,6 +20,7 @@ type TableProps<T> = {
   data: T[];
   keyExtractor: (row: T, index: number) => string;
   emptyLabel?: string;
+  highlightKey?: string | null;
   style?: StyleProp<ViewStyle>;
 };
 
@@ -41,7 +42,14 @@ function renderCell<T>(column: TableColumn<T>, row: T): ReactNode {
   );
 }
 
-export function Table<T>({ columns, data, keyExtractor, emptyLabel = 'No records', style }: TableProps<T>) {
+export function Table<T>({
+  columns,
+  data,
+  keyExtractor,
+  emptyLabel = 'No records',
+  highlightKey = null,
+  style,
+}: TableProps<T>) {
   return (
     <View style={[styles.table, style]}>
       <View style={styles.headerRow}>
@@ -63,7 +71,13 @@ export function Table<T>({ columns, data, keyExtractor, emptyLabel = 'No records
         data.map((row, index) => (
           <View
             key={keyExtractor(row, index)}
-            style={[styles.row, index === data.length - 1 && styles.rowLast]}>
+            style={[
+              styles.row,
+              index === data.length - 1 && styles.rowLast,
+              highlightKey != null &&
+                keyExtractor(row, index) === highlightKey &&
+                styles.rowHighlighted,
+            ]}>
             {columns.map((column) => (
               <View
                 key={column.key}
@@ -102,6 +116,13 @@ const styles = StyleSheet.create({
   },
   rowLast: {
     borderBottomWidth: 0,
+  },
+  rowHighlighted: {
+    paddingHorizontal: 10,
+    marginHorizontal: -10,
+    borderRadius: DefaultTheme.radius.sm,
+    borderBottomColor: 'transparent',
+    backgroundColor: DefaultTheme.colors.softGold,
   },
   cell: {
     paddingRight: 10,

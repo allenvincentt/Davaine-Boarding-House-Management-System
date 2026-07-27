@@ -44,6 +44,8 @@ function isLandingSection(value: string): value is LandingSection {
   return landingNavigation.some((item) => item.section === value);
 }
 
+const MODAL_DISMISS_SETTLE = 360;
+
 export default function LandingPage() {
   const { width, height } = useWindowDimensions();
   const params = useLocalSearchParams<{ section?: string }>();
@@ -69,6 +71,7 @@ export default function LandingPage() {
   const [detailsRoom, setDetailsRoom] = useState<PublicRoomModel | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const contentActiveRef = useRef(true);
+  const inquiryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     contentActiveRef.current = true;
@@ -135,6 +138,9 @@ export default function LandingPage() {
       if (activeSectionTimer.current !== null) {
         clearTimeout(activeSectionTimer.current);
       }
+      if (inquiryTimer.current !== null) {
+        clearTimeout(inquiryTimer.current);
+      }
     };
   }, []);
 
@@ -164,6 +170,19 @@ export default function LandingPage() {
     },
     [sectionPositions, compactNavigation],
   );
+
+  const handleInquire = useCallback(() => {
+    setDetailsOpen(false);
+
+    if (inquiryTimer.current !== null) {
+      clearTimeout(inquiryTimer.current);
+    }
+
+    inquiryTimer.current = setTimeout(() => {
+      inquiryTimer.current = null;
+      navigateTo('about');
+    }, MODAL_DISMISS_SETTLE);
+  }, [navigateTo]);
 
   const requestedSection = typeof params.section === 'string' ? params.section : null;
 
@@ -252,7 +271,7 @@ export default function LandingPage() {
         visible={detailsOpen}
         room={detailsRoom}
         onClose={() => setDetailsOpen(false)}
-        onInquire={() => navigateTo('about')}
+        onInquire={handleInquire}
       />
     </View>
   );

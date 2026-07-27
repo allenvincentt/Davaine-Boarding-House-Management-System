@@ -1,3 +1,4 @@
+import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -18,7 +19,12 @@ import { AppIcon } from '@/components/ui/AppIcon';
 import { GlassMaterial } from '@/components/ui/GlassPanel';
 import { DefaultTheme } from '@/constants/defaultTheme';
 import type { AppIconName } from '@/constants/icons';
-import { relativeTimeFrom, type NotificationModel, type NotificationType } from '@/models/notificationModel';
+import {
+  relativeTimeFrom,
+  reviewIdOf,
+  type NotificationModel,
+  type NotificationType,
+} from '@/models/notificationModel';
 import { useNotifications } from '@/providers/NotificationProvider';
 import { appStorage } from '@/services/sessionStorage';
 
@@ -55,15 +61,18 @@ const typeIcons: Record<NotificationType, AppIconName> = {
   welcome: 'users',
   role_change: 'directory',
   password_change: 'key',
+  review: 'feedback',
 };
 
 const typeTones: Record<NotificationType, { color: string; background: string }> = {
   welcome: { color: DefaultTheme.colors.primary, background: DefaultTheme.colors.softOlive },
   role_change: { color: '#7C5CD6', background: '#EDE7F6' },
   password_change: { color: '#C98A1E', background: DefaultTheme.colors.softGold },
+  review: { color: '#C98A1E', background: DefaultTheme.colors.softGold },
 };
 
 export function NotificationPanel({ visible, onClose, anchor }: NotificationPanelProps) {
+  const router = useRouter();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const compact = windowWidth < DefaultTheme.layout.compactNavigation;
   const {
@@ -154,6 +163,26 @@ export function NotificationPanel({ visible, onClose, anchor }: NotificationPane
   const handleEnablePush = useCallback(() => {
     void enableSystemPush();
   }, [enableSystemPush]);
+
+  const handleOpenNotification = useCallback(
+    (notification: NotificationModel) => {
+      if (!notification.readAt) {
+        markRead(notification.id);
+      }
+
+      const reviewId = reviewIdOf(notification);
+      if (!reviewId) {
+        return;
+      }
+
+      onClose();
+      router.push({
+        pathname: '/admin-pages/FeedbackPage',
+        params: { review: reviewId },
+      });
+    },
+    [markRead, onClose, router],
+  );
 
   const visibleNotifications = useMemo(() => {
     if (tab === 'unread') {
@@ -315,11 +344,7 @@ export function NotificationPanel({ visible, onClose, anchor }: NotificationPane
                 key={notification.id}
                 notification={notification}
                 index={index}
-                onPress={() => {
-                  if (!notification.readAt) {
-                    markRead(notification.id);
-                  }
-                }}
+                onPress={() => handleOpenNotification(notification)}
               />
             ))
           )}

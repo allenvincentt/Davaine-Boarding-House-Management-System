@@ -32,6 +32,8 @@ import {
 } from '@/services/biometricAuthService';
 import { supabase } from '@/services/supabaseClient';
 
+export type SessionResumeResult = 'ready' | 'sign-in-required' | 'cancelled';
+
 type AuthContextValue = {
   session: Session | null;
   profile: AdminUserModel | null;
@@ -54,6 +56,8 @@ type AuthContextValue = {
   biometricAvailable: boolean;
   biometricSignInEnabled: boolean;
   signInWithBiometrics: () => Promise<AdminUserModel>;
+  sessionVerified: boolean;
+  resumeSession: () => Promise<SessionResumeResult>;
   locked: boolean;
   unlockWithBiometrics: () => Promise<void>;
   enableBiometricSignIn: () => Promise<void>;
@@ -70,10 +74,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [biometricKind, setBiometricKind] = useState<BiometricKind | null>(null);
   const [hasCachedBiometricSession, setHasCachedBiometricSession] = useState(false);
   const [locked, setLocked] = useState(false);
+  const [sessionVerified, setSessionVerified] = useState(Platform.OS === 'web');
   const activeRef = useRef(true);
   const biometricEnabledRef = useRef(false);
   const sessionRef = useRef<Session | null>(null);
   const appStateRef = useRef(AppState.currentState);
+
+  const markSessionVerified = useCallback((verified: boolean) => {
+    setSessionVerified(Platform.OS === 'web' ? true : verified);
+  }, []);
 
   useEffect(() => {
     biometricEnabledRef.current = hasCachedBiometricSession;
@@ -210,6 +219,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { profile: nextProfile } = await signInAdmin(email, password);
         setProfile(nextProfile);
         setLocked(false);
+        markSessionVerified(true);
 
         if (enableFingerprintSignIn && Platform.OS !== 'web' && biometricKind === 'fingerprint') {
           const { data } = await supabase.auth.getSession();
@@ -229,6 +239,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         biometricEnabledRef.current = false;
         setProfile(null);
         setLocked(false);
+        markSessionVerified(false);
       },
       requestPasswordReset: async (email: string) => {
         await requestPasswordReset(email);
@@ -259,6 +270,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           signedInProfile = nextProfile;
           setProfile(nextProfile);
           setLocked(false);
+          markSessionVerified(true);
         } catch (error) {
           if (error instanceof ExpiredBiometricSessionError) {
             await clearCachedBiometricRefreshToken();
@@ -275,6 +287,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         return signedInProfile;
       },
+      sessionVerified,
+      resumeSession: async () => {
+        if (!sessionRef.current) {
+          return 'sign-in-required';
+        }
+        if (sessionVerified) {
+          return 'ready';
+        }
+
+        if (
+          Platform.OS !== 'web' &&
+          biometricKind === 'fingerprint' &&
+          hasCachedBiometricSession
+        ) {
+          const authenticated = await authenticateWithBiometrics('Sign in to Davaine');
+          if (!authenticated) {
+            return 'cancelled';
+          }
+
+          markSessionVerified(true);
+          setLocked(false);
+          return 'ready';
+        }
+
+        try {
+          await signOutAdmin();
+        } catch {
+          await supabase.auth.signOut({ scope: 'local' });
+        }
+
+        await clearCachedBiometricRefreshToken();
+        setHasCachedBiometricSession(false);
+        biometricEnabledRef.current = false;
+        setProfile(null);
+        setLocked(false);
+        markSessionVerified(false);
+        return 'sign-in-required';
+      },
       locked,
       unlockWithBiometrics: async () => {
         const authenticated = await authenticateWithBiometrics('Unlock Davaine');
@@ -282,6 +332,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           throw new Error('Fingerprint authentication was not completed.');
         }
         setLocked(false);
+        markSessionVerified(true);
       },
       enableBiometricSignIn: async () => {
         if (Platform.OS === 'web' || biometricKind !== 'fingerprint') {
@@ -308,7 +359,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         biometricEnabledRef.current = false;
       },
     }),
-    [session, profile, initializing, initError, initialize, biometricKind, hasCachedBiometricSession, locked],
+    [
+      session,
+      profile,
+      initializing,
+      initError,
+      initialize,
+      biometricKind,
+      hasCachedBiometricSession,
+      locked,
+      sessionVerified,
+      markSessionVerified,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
