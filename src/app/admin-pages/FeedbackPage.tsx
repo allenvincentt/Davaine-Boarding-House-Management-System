@@ -40,8 +40,9 @@ import {
 } from '@/models/roomModel';
 import { useAuth } from '@/providers/AuthProvider';
 import { can } from '@/services/accessControl';
-import { listRoomReviews, updateReviewStatus } from '@/services/feedbackService';
+import { deleteReview, listRoomReviews, updateReviewStatus } from '@/services/feedbackService';
 import { listRooms } from '@/services/roomManagementService';
+import { ConfirmDialog } from '@/components/ui/modals/ConfirmDialog';
 
 type StatusFilter = 'All' | ReviewStatus;
 
@@ -82,6 +83,7 @@ export default function FeedbackPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('All');
   const [tableWidth, setTableWidth] = useState(0);
 
+  const [pendingDelete, setPendingDelete] = useState<RoomReviewModel | null>(null);
   const [actionsReview, setActionsReview] = useState<RoomReviewModel | null>(null);
   const [actionsAnchor, setActionsAnchor] = useState<SelectAnchor | null>(null);
   const [actionsOpen, setActionsOpen] = useState(false);
@@ -198,6 +200,23 @@ export default function FeedbackPage() {
     [tagOf],
   );
 
+  const handleDeleteReview = useCallback(
+    async (review: RoomReviewModel) => {
+      setNotice(null);
+      setActionError(null);
+      try {
+        await deleteReview(review.id);
+        setReviews((current) => current.filter((item) => item.id !== review.id));
+        setNotice(`The review for ${tagOf(review.roomId).label} was deleted.`);
+      } catch (error) {
+        setActionError(
+          error instanceof Error ? error.message : 'The review could not be deleted.',
+        );
+      }
+    },
+    [tagOf],
+  );
+
   const actionOptions = useMemo<SelectOption[]>(() => {
     if (!actionsReview || !canModerate) {
       return [];
@@ -216,6 +235,13 @@ export default function FeedbackPage() {
         icon: 'close',
         destructive: true,
         onSelect: () => handleStatusChange(actionsReview, 'Disapproved'),
+      },
+      {
+        key: 'delete',
+        label: 'Delete',
+        icon: 'trash',
+        destructive: true,
+        onSelect: () => setPendingDelete(actionsReview),
       },
     ];
   }, [actionsReview, canModerate, handleStatusChange]);
@@ -417,6 +443,23 @@ export default function FeedbackPage() {
         anchor={actionsAnchor}
         align="right"
         minWidth={186}
+      />
+
+      <ConfirmDialog
+        visible={pendingDelete !== null}
+        icon="trash"
+        tone="destructive"
+        title="Delete review?"
+        message={`This ${pendingDelete?.rating ?? ''}-star review for ${
+          pendingDelete ? tagOf(pendingDelete.roomId).label : 'this room'
+        } will be permanently removed. This action cannot be undone.`}
+        confirmLabel="Delete"
+        onConfirm={() => {
+          if (pendingDelete) {
+            handleDeleteReview(pendingDelete);
+          }
+        }}
+        onClose={() => setPendingDelete(null)}
       />
     </View>
   );

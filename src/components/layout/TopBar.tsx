@@ -263,26 +263,17 @@ function NotificationBell() {
           useNativeDriver: false,
         }),
       ]).start();
-
-      halo.setValue(0);
-      Animated.loop(
-        Animated.timing(halo, {
-          toValue: 1,
-          duration: 1150,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: false,
-        }),
-        { iterations: 3 },
-      ).start();
     }
 
     previousCount.current = unreadCount;
-  }, [unreadCount, pop, halo]);
+  }, [unreadCount, pop]);
 
   useEffect(() => {
     if (unreadCount === 0) {
       idle.stopAnimation();
       idle.setValue(0);
+      halo.stopAnimation();
+      halo.setValue(0);
       return;
     }
 
@@ -304,9 +295,24 @@ function NotificationBell() {
       ]),
     );
 
+    const haloLoop = Animated.loop(
+      Animated.timing(halo, {
+        toValue: 1,
+        duration: 1150,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }),
+    );
+
+    halo.setValue(0);
     loop.start();
-    return () => loop.stop();
-  }, [unreadCount, idle]);
+    haloLoop.start();
+
+    return () => {
+      loop.stop();
+      haloLoop.stop();
+    };
+  }, [unreadCount, idle, halo]);
 
   const handlePress = () => {
     if (open) {
@@ -325,6 +331,11 @@ function NotificationBell() {
     idle.interpolate({ inputRange: [0, 1], outputRange: [1, 1.12] }),
   );
 
+  const bellRotate = Animated.add(
+    idle.interpolate({ inputRange: [0, 0.25, 0.5, 0.75, 1], outputRange: [0, 1, 0, -1, 0] }),
+    pop,
+  ).interpolate({ inputRange: [-1, 0, 1], outputRange: ['-11deg', '0deg', '14deg'] });
+
   return (
     <View ref={wrapperRef} collapsable={false} style={styles.bellWrap}>
       <GlassPressable
@@ -340,14 +351,7 @@ function NotificationBell() {
         onPress={handlePress}
         style={styles.bell}
         contentStyle={styles.bellContent}>
-        <Animated.View
-          style={{
-            transform: [
-              {
-                rotate: pop.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '14deg'] }),
-              },
-            ],
-          }}>
+        <Animated.View style={{ transform: [{ rotate: bellRotate }] }}>
           <AppIcon
             name="bell"
             size={19}

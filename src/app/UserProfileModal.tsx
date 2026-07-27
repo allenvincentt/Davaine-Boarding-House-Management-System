@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppIcon } from '@/components/ui/AppIcon';
@@ -11,18 +11,14 @@ import type { AppIconName } from '@/constants/icons';
 import { useAuth } from '@/providers/AuthProvider';
 import { roleLabel } from '@/services/accessControl';
 import type { BiometricKind } from '@/services/biometricAuthService';
-import {
-  changeOwnPassword,
-  fetchPasswordFingerprint,
-  updateOwnProfile,
-} from '@/services/userManagementService';
+import { changeOwnPassword, updateOwnProfile } from '@/services/userManagementService';
 
 type UserProfileModalProps = {
   visible: boolean;
   onClose: () => void;
 };
 
-const FINGERPRINT_PREVIEW_LENGTH = 40;
+const PASSWORD_MASK = '●●●●●●●●●●●●';
 
 export function UserProfileModal({ visible, onClose }: UserProfileModalProps) {
   const {
@@ -41,8 +37,6 @@ export function UserProfileModal({ visible, onClose }: UserProfileModalProps) {
   const [profileError, setProfileError] = useState('');
   const [profileNotice, setProfileNotice] = useState('');
 
-  const [fingerprint, setFingerprint] = useState<string | null>(null);
-  const [fingerprintVisible, setFingerprintVisible] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -55,29 +49,6 @@ export function UserProfileModal({ visible, onClose }: UserProfileModalProps) {
   const [biometricError, setBiometricError] = useState('');
 
   const busy = savingProfile || savingPassword || biometricBusy;
-
-  useEffect(() => {
-    if (!visible) {
-      return;
-    }
-
-    let active = true;
-    fetchPasswordFingerprint()
-      .then((value) => {
-        if (active) {
-          setFingerprint(value);
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setFingerprint(null);
-        }
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [visible]);
 
   const handleClose = useCallback(() => {
     if (busy) {
@@ -133,7 +104,6 @@ export function UserProfileModal({ visible, onClose }: UserProfileModalProps) {
     setPasswordNotice('');
     try {
       await changeOwnPassword(currentPassword, newPassword);
-      setFingerprint(await fetchPasswordFingerprint());
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
@@ -282,30 +252,12 @@ export function UserProfileModal({ visible, onClose }: UserProfileModalProps) {
               <AppIcon name="lock" size={16} tintColor={DefaultTheme.colors.primary} />
             </View>
             <View style={styles.infoText}>
-              <Text style={styles.infoLabel}>Password (hashed)</Text>
-              <Text style={styles.hashValue} numberOfLines={2}>
-                {fingerprint == null
-                  ? 'Unavailable'
-                  : fingerprintVisible
-                    ? fingerprint
-                    : `${fingerprint.slice(0, FINGERPRINT_PREVIEW_LENGTH)}…`}
+              <Text style={styles.infoLabel}>Password</Text>
+              <Text style={styles.hashValue} numberOfLines={1}>
+                {PASSWORD_MASK}
               </Text>
-              <Text style={styles.hashCaption}>SHA-256 digest of your stored credential</Text>
+              <Text style={styles.hashCaption}>Hidden for your security</Text>
             </View>
-            {fingerprint != null && (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={fingerprintVisible ? 'Shorten hash' : 'Show full hash'}
-                hitSlop={8}
-                style={styles.hashToggle}
-                onPress={() => setFingerprintVisible((current) => !current)}>
-                <AppIcon
-                  name={fingerprintVisible ? 'eyeOff' : 'eye'}
-                  size={16}
-                  tintColor={DefaultTheme.colors.muted}
-                />
-              </Pressable>
-            )}
           </View>
 
           {changingPassword && (
@@ -566,23 +518,18 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   hashValue: {
-    marginTop: 3,
+    marginTop: 5,
     color: DefaultTheme.colors.ink,
-    fontFamily: Platform.select({ web: 'monospace', default: DefaultTheme.fonts.bodySemiBold }),
-    fontSize: 12,
+    fontFamily: DefaultTheme.fonts.bodySemiBold,
+    fontSize: 13,
+    letterSpacing: 2,
     lineHeight: 17,
   },
   hashCaption: {
-    marginTop: 4,
+    marginTop: 5,
     color: DefaultTheme.colors.muted,
     fontFamily: DefaultTheme.fonts.bodyMedium,
     fontSize: 10.5,
-  },
-  hashToggle: {
-    width: 30,
-    height: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   inlineActions: {
     flexDirection: 'row',

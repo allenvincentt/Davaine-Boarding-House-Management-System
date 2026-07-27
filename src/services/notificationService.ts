@@ -46,11 +46,20 @@ export async function markAllNotificationsRead(userId: string): Promise<void> {
   }
 }
 
+export async function deleteNotification(id: string): Promise<void> {
+  const { error } = await notificationsTable().delete().eq('id', id);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
 export function subscribeToNotifications(
   userId: string,
   handlers: {
     onInsert: (notification: NotificationModel) => void;
     onUpdate: (notification: NotificationModel) => void;
+    onDelete: (id: string) => void;
   },
 ): () => void {
   const channel = supabase
@@ -64,6 +73,16 @@ export function subscribeToNotifications(
       'postgres_changes',
       { event: 'UPDATE', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` },
       (payload) => handlers.onUpdate(toNotificationModel(payload.new as NotificationRow)),
+    )
+    .on(
+      'postgres_changes',
+      { event: 'DELETE', schema: 'public', table: 'notifications' },
+      (payload) => {
+        const removed = payload.old as { id?: string } | null;
+        if (removed?.id) {
+          handlers.onDelete(removed.id);
+        }
+      },
     )
     .subscribe();
 

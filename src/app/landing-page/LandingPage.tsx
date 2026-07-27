@@ -45,6 +45,7 @@ function isLandingSection(value: string): value is LandingSection {
 }
 
 const MODAL_DISMISS_SETTLE = 360;
+const DEEP_LINK_SETTLE_WINDOW = 4000;
 
 export default function LandingPage() {
   const { width, height } = useWindowDimensions();
@@ -57,6 +58,8 @@ export default function LandingPage() {
   const activeSectionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const navigationTargetRef = useRef<LandingSection | null>(null);
   const handledSectionRef = useRef<string | null>(null);
+  const deepLinkStartRef = useRef(0);
+  const deepLinkPositionRef = useRef<number | null>(null);
   const [sectionPositions, setSectionPositions] = useState<Record<LandingSection, number>>({
     home: 0,
     rooms: 0,
@@ -188,17 +191,33 @@ export default function LandingPage() {
 
   useEffect(() => {
     if (!requestedSection || !isLandingSection(requestedSection)) {
-      return;
-    }
-    if (handledSectionRef.current === requestedSection) {
-      return;
-    }
-    if (requestedSection !== 'home' && sectionPositions[requestedSection] <= 0) {
+      handledSectionRef.current = null;
       return;
     }
 
-    const timer = setTimeout(() => {
+    if (handledSectionRef.current !== requestedSection) {
       handledSectionRef.current = requestedSection;
+      deepLinkStartRef.current = Date.now();
+      deepLinkPositionRef.current = null;
+    }
+
+    if (Date.now() - deepLinkStartRef.current > DEEP_LINK_SETTLE_WINDOW) {
+      return;
+    }
+
+    const position = requestedSection === 'home' ? 0 : sectionPositions[requestedSection];
+
+    if (requestedSection !== 'home' && position <= 0) {
+      return;
+    }
+
+    if (deepLinkPositionRef.current === position) {
+      return;
+    }
+
+    deepLinkPositionRef.current = position;
+
+    const timer = setTimeout(() => {
       navigateTo(requestedSection);
     }, 0);
 

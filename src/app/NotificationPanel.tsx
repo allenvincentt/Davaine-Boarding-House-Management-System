@@ -83,6 +83,7 @@ export function NotificationPanel({ visible, onClose, anchor }: NotificationPane
     refresh,
     markRead,
     markAllRead,
+    deleteNotification,
     enableSystemPush,
     systemPushSupported,
     systemPushPermission,
@@ -345,6 +346,7 @@ export function NotificationPanel({ visible, onClose, anchor }: NotificationPane
                 notification={notification}
                 index={index}
                 onPress={() => handleOpenNotification(notification)}
+                onDelete={() => deleteNotification(notification.id)}
               />
             ))
           )}
@@ -378,12 +380,15 @@ function NotificationRow({
   notification,
   index,
   onPress,
+  onDelete,
 }: {
   notification: NotificationModel;
   index: number;
   onPress: () => void;
+  onDelete: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
+  const [deleteHovered, setDeleteHovered] = useState(false);
   const entrance = useRef(new Animated.Value(0)).current;
   const tone = typeTones[notification.type] ?? typeTones.welcome;
   const unread = !notification.readAt;
@@ -409,7 +414,6 @@ function NotificationRow({
         ],
       }}>
       <Pressable
-        accessibilityRole="button"
         accessibilityLabel={notification.title}
         style={[styles.row, unread && styles.rowUnread, hovered && styles.rowHovered]}
         onPress={onPress}
@@ -429,7 +433,26 @@ function NotificationRow({
             {notification.body}
           </Text>
         </View>
-        {unread && <View style={styles.unreadDot} />}
+        <View style={styles.rowTrailing}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Delete ${notification.title}`}
+            hitSlop={6}
+            style={[styles.rowDelete, deleteHovered && styles.rowDeleteHovered]}
+            onHoverIn={() => setDeleteHovered(true)}
+            onHoverOut={() => setDeleteHovered(false)}
+            onPress={(event) => {
+              event.stopPropagation();
+              onDelete();
+            }}>
+            <AppIcon
+              name="trash"
+              size={13}
+              tintColor={deleteHovered ? '#D64545' : DefaultTheme.colors.muted}
+            />
+          </Pressable>
+          {unread && <View style={styles.unreadDot} />}
+        </View>
       </Pressable>
     </Animated.View>
   );
@@ -603,10 +626,24 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 17,
   },
+  rowTrailing: {
+    width: 24,
+    alignItems: 'center',
+    gap: 6,
+  },
+  rowDelete: {
+    width: 24,
+    height: 24,
+    borderRadius: DefaultTheme.radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rowDeleteHovered: {
+    backgroundColor: 'rgba(214, 69, 69, 0.12)',
+  },
   unreadDot: {
     width: 7,
     height: 7,
-    marginTop: 12,
     borderRadius: 4,
     backgroundColor: DefaultTheme.colors.primary,
   },

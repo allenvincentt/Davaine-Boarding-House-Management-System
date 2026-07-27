@@ -104,6 +104,18 @@ export async function submitRoomReview(input: SubmitReviewInput): Promise<RoomRe
   return toReviewModel(data);
 }
 
+export async function deleteReview(id: string): Promise<void> {
+  const { error } = await reviewTable().delete().eq('id', id);
+
+  if (error) {
+    throw new Error(
+      error.message.toLowerCase().includes('row-level security')
+        ? 'You are not allowed to delete reviews.'
+        : error.message,
+    );
+  }
+}
+
 export async function updateReviewStatus(
   id: string,
   status: ReviewStatus,

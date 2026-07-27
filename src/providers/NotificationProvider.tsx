@@ -12,6 +12,7 @@ import {
 import { toPushPayload, type NotificationModel } from '@/models/notificationModel';
 import { useAuth } from '@/providers/AuthProvider';
 import {
+  deleteNotification as deleteNotificationRow,
   fetchNotifications,
   markAllNotificationsRead,
   markNotificationRead,
@@ -38,6 +39,7 @@ type NotificationContextValue = {
   refresh: () => Promise<void>;
   markRead: (id: string) => Promise<void>;
   markAllRead: () => Promise<void>;
+  deleteNotification: (id: string) => Promise<void>;
   enableSystemPush: () => Promise<boolean>;
   systemPushSupported: boolean;
   systemPushPermission: SystemPushPermission;
@@ -130,6 +132,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           current.map((item) => (item.id === notification.id ? notification : item)),
         );
       },
+      onDelete: (id) => {
+        setNotifications((current) => current.filter((item) => item.id !== id));
+      },
     });
 
     return unsubscribe;
@@ -169,6 +174,28 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       }
     }
   }, [userId]);
+
+  const deleteNotification = useCallback(async (id: string) => {
+    let removed: NotificationModel | undefined;
+
+    setNotifications((current) => {
+      removed = current.find((item) => item.id === id);
+      return current.filter((item) => item.id !== id);
+    });
+
+    try {
+      await deleteNotificationRow(id);
+    } catch (deleteError) {
+      if (activeRef.current) {
+        setNotifications((current) =>
+          removed && !current.some((item) => item.id === id)
+            ? [removed, ...current].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+            : current,
+        );
+        setError(deleteError instanceof Error ? deleteError.message : 'Unable to delete notification.');
+      }
+    }
+  }, []);
 
   const enableSystemPush = useCallback(async () => {
     const granted = await ensureSystemPushPermission();
@@ -240,6 +267,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       },
       markRead,
       markAllRead,
+      deleteNotification,
       enableSystemPush,
       systemPushSupported: isSystemPushSupported(),
       systemPushPermission,
@@ -252,6 +280,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       load,
       markRead,
       markAllRead,
+      deleteNotification,
       enableSystemPush,
       systemPushPermission,
     ],

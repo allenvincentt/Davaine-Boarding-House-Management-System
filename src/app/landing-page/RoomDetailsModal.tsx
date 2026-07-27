@@ -55,6 +55,7 @@ export function RoomDetailsModal({
   const [comment, setComment] = useState("");
   const [commentFocused, setCommentFocused] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
   const [reviewError, setReviewError] = useState<string | null>(null);
 
   const [reviews, setReviews] = useState<RoomReviewModel[]>([]);
@@ -73,6 +74,7 @@ export function RoomDetailsModal({
   useEffect(() => {
     setSlide(0);
     setComposerOpen(false);
+    setSubmitted(false);
     setRating(0);
     setComment("");
     setReviewError(null);
@@ -136,7 +138,7 @@ export function RoomDetailsModal({
     setReviewError(null);
     try {
       await submitRoomReview({ roomId: room.roomId, rating, comment });
-      setComposerOpen(false);
+      setSubmitted(true);
       setRating(0);
       setComment("");
     } catch (error) {
@@ -398,6 +400,25 @@ export function RoomDetailsModal({
 
           {composerOpen ? (
             <View style={styles.composer}>
+              {submitted ? (
+                <View style={styles.composerSuccess}>
+                  <Text style={styles.composerSuccessTitle}>Review submitted</Text>
+                  <Text style={styles.composerSuccessText}>
+                    Thanks for sharing. Your review will appear here once an
+                    administrator approves it.
+                  </Text>
+                  <MatchaButton
+                    label="Done"
+                    variant="outline"
+                    style={styles.composerSuccessAction}
+                    onPress={() => {
+                      setSubmitted(false);
+                      setComposerOpen(false);
+                    }}
+                  />
+                </View>
+              ) : (
+                <>
               <Text style={styles.composerLabel}>Your rating</Text>
               <View style={styles.starRow}>
                 {RATING_VALUES.map((value) => (
@@ -466,6 +487,8 @@ export function RoomDetailsModal({
                   onPress={handleSubmitReview}
                 />
               </View>
+                </>
+              )}
             </View>
           ) : (
             <MatchaButton
@@ -475,6 +498,7 @@ export function RoomDetailsModal({
               style={styles.addReviewButton}
               onPress={() => {
                 setReviewError(null);
+                setSubmitted(false);
                 setComposerOpen(true);
               }}
             />
@@ -871,6 +895,30 @@ const styles = StyleSheet.create({
   },
   composer: {
     marginTop: 14,
+  },
+  composerSuccess: {
+    minHeight: 244,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    paddingHorizontal: 8,
+  },
+  composerSuccessTitle: {
+    color: DefaultTheme.colors.ink,
+    fontFamily: DefaultTheme.fonts.bodyBold,
+    fontSize: 15,
+  },
+  composerSuccessAction: {
+    minHeight: 44,
+    paddingHorizontal: 30,
+  },
+  composerSuccessText: {
+    marginBottom: 6,
+    color: DefaultTheme.colors.muted,
+    fontFamily: DefaultTheme.fonts.bodyMedium,
+    fontSize: 12.5,
+    lineHeight: 18,
+    textAlign: "center",
   },
   composerLabel: {
     marginBottom: 6,
