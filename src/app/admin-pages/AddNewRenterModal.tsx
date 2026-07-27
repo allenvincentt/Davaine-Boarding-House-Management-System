@@ -13,6 +13,7 @@ import {
   validateRenterEntries,
   type FieldEntry,
 } from '@/components/ui/forms/RenterFieldList';
+import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/modals/Modal';
 import { Select, type SelectAnchor, type SelectOption } from '@/components/ui/Select';
 import { DefaultTheme } from '@/constants/defaultTheme';
@@ -22,6 +23,7 @@ import {
   buildingLabel,
   dueSummaryOf,
   formatPeso,
+  parseRate,
   roomLabel,
   roomStatusOf,
   tenantCountLabel,
@@ -31,6 +33,7 @@ import type { RenterDraft } from '@/services/roomManagementService';
 
 export type AddRenterSubmit = {
   roomId: string;
+  rate: number;
   renters: RenterDraft[];
 };
 
@@ -43,6 +46,7 @@ type AddNewRenterModalProps = {
 
 type FormErrors = {
   room?: string;
+  rate?: string;
   general?: string;
   fields: Record<string, string>;
 };
@@ -54,6 +58,7 @@ export function AddNewRenterModal({
   onSubmit,
 }: AddNewRenterModalProps) {
   const [roomId, setRoomId] = useState('');
+  const [rate, setRate] = useState('');
   const [names, setNames] = useState(() => fieldEntriesFrom(undefined));
   const [contacts, setContacts] = useState(() => fieldEntriesFrom(undefined));
   const [links, setLinks] = useState(() => fieldEntriesFrom(undefined));
@@ -64,6 +69,10 @@ export function AddNewRenterModal({
     () => rooms.find((item) => item.id === roomId) ?? null,
     [rooms, roomId],
   );
+
+  const parsedRate = parseRate(rate);
+  const rateChanged =
+    !!selectedRoom && Number.isFinite(parsedRate) && parsedRate !== selectedRoom.rate;
 
   const clearFieldError = (id: string) => {
     setErrors((current) => {
@@ -105,8 +114,15 @@ export function AddNewRenterModal({
   const validate = (): FormErrors | null => {
     const fields = validateRenterEntries(names, contacts, links);
     const room = selectedRoom ? undefined : 'Select the room these renters belong to.';
+    const parsed = parseRate(rate);
+    const rateError =
+      selectedRoom && (!Number.isFinite(parsed) || parsed <= 0)
+        ? 'Enter a valid room rate.'
+        : undefined;
 
-    return Object.keys(fields).length > 0 || room ? { fields, room } : null;
+    return Object.keys(fields).length > 0 || room || rateError
+      ? { fields, room, rate: rateError }
+      : null;
   };
 
   const handleSave = async () => {
@@ -132,7 +148,11 @@ export function AddNewRenterModal({
       .filter((renter) => renter.fullName.length > 0);
 
     try {
-      await onSubmit({ roomId: selectedRoom?.id ?? '', renters });
+      await onSubmit({
+        roomId: selectedRoom?.id ?? '',
+        rate: parseRate(rate),
+        renters,
+      });
       onClose();
     } catch (error) {
       setErrors({
@@ -219,7 +239,8 @@ export function AddNewRenterModal({
               error={errors.room}
               onChange={(next) => {
                 setRoomId(next.id);
-                setErrors((current) => ({ ...current, room: undefined }));
+                setRate(String(next.rate));
+                setErrors((current) => ({ ...current, room: undefined, rate: undefined }));
               }}
             />
             {selectedRoom && (
@@ -227,6 +248,37 @@ export function AddNewRenterModal({
                 <SummaryChip icon="money" label={`${formatPeso(selectedRoom.rate)} / month`} />
                 <SummaryChip icon="users" label={tenantCountLabel(selectedRoom)} />
                 <SummaryChip icon="calendar" label={dueSummaryOf(selectedRoom)} />
+              </View>
+            )}
+          </FormSection>
+
+          <FormSection>
+            <FormSectionHeader
+              icon="money"
+              title="Room Rates"
+              caption="Defaults to the selected room rate. Update it when the rate has changed."
+            />
+            <Input
+              label="Room Rate (₱)"
+              value={rate}
+              onChangeText={(value) => {
+                setRate(value);
+                setErrors((current) => ({ ...current, rate: undefined }));
+              }}
+              error={errors.rate}
+              icon="money"
+              keyboardType="number-pad"
+              maxLength={7}
+            />
+            {!!selectedRoom && (
+              <View style={styles.summaryRow}>
+                <SummaryChip
+                  icon="money"
+                  label={`Current ${formatPeso(selectedRoom.rate)} / month`}
+                />
+                {rateChanged && (
+                  <SummaryChip icon="edit" label={`New ${formatPeso(parseRate(rate))} / month`} />
+                )}
               </View>
             )}
           </FormSection>

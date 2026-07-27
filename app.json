@@ -57,6 +57,12 @@
         {
           "faceIDPermission": "Allow Davaine to use Face ID to sign you in securely."
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Davaine to access your photos so you can upload room and carousel images."
+        }
       ]
     ],
     "experiments": {

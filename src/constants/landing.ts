@@ -2,64 +2,11 @@ import type { AppIconName } from './icons';
 
 export type LandingSection = 'home' | 'rooms' | 'billing' | 'about';
 
-export type RoomInfo = {
-  name: string;
-  image: string;
-  status: string;
-  available: boolean;
-  capacity: string;
-  rate: string;
-  rating: string;
-};
-
 export const landingNavigation: { label: string; section: LandingSection }[] = [
   { label: 'Home', section: 'home' },
   { label: 'Rooms', section: 'rooms' },
   { label: 'Billing', section: 'billing' },
   { label: 'About', section: 'about' },
-];
-
-export const carouselImages = [
-  'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=900&q=85',
-  'https://images.unsplash.com/photo-1515372039744-b8f02a3ae446?auto=format&fit=crop&w=900&q=85',
-  'https://images.unsplash.com/photo-1556911220-bff31c812dba?auto=format&fit=crop&w=900&q=85',
-  'https://images.unsplash.com/photo-1540555700478-4be289fbecef?auto=format&fit=crop&w=900&q=85',
-  'https://images.unsplash.com/photo-1526772662000-3f88f10405ff?auto=format&fit=crop&w=900&q=85',
-  'https://images.unsplash.com/photo-1524758631624-e2822e304c36?auto=format&fit=crop&w=900&q=85',
-  'https://images.unsplash.com/photo-1484101403633-562f891dc89a?auto=format&fit=crop&w=900&q=85',
-];
-
-export const rooms: RoomInfo[] = [
-  {
-    name: 'Room 1-A',
-    image:
-      'https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?auto=format&fit=crop&w=1200&q=85',
-    status: 'Available',
-    available: true,
-    capacity: 'Good for 2 Pax',
-    rate: '₱ 2,200',
-    rating: '4.9',
-  },
-  {
-    name: 'Room 2-A',
-    image:
-      'https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?auto=format&fit=crop&w=1200&q=85',
-    status: 'Occupied',
-    available: false,
-    capacity: 'Good for 3 Pax',
-    rate: '₱ 1,800',
-    rating: '4.7',
-  },
-  {
-    name: 'Room 3-A',
-    image:
-      'https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=1200&q=85',
-    status: 'Available',
-    available: true,
-    capacity: 'Good for 10 Pax',
-    rate: '₱ 1,800',
-    rating: '4.8',
-  },
 ];
 
 export const amenities: { icon: AppIconName; label: string }[] = [

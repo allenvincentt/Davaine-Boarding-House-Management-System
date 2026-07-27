@@ -2,35 +2,52 @@ import { useEffect, useRef, useState } from 'react';
 import { Animated, Image, StyleSheet, View, useWindowDimensions } from 'react-native';
 
 import { DefaultTheme } from '@/constants/defaultTheme';
-import { carouselImages } from '@/constants/landing';
 
 const inputRange = [-3.6, -3, -2, -1, 0, 1, 2, 3, 3.6];
 const horizontalCurve = [-4.25, -3.55, -2.28, -1.12, 0, 1.16, 2.48, 3.79, 4.48];
 
-export function CurvedCarousel() {
+export type CarouselItem = {
+  id: string;
+  uri: string;
+};
+
+export function CurvedCarousel({ items }: { items: CarouselItem[] }) {
   const { width } = useWindowDimensions();
-  const [activeIndex, setActiveIndex] = useState(3);
+  const [activeIndex, setActiveIndex] = useState(0);
   const cardWidth = Math.min(Math.max(width * 0.116, 74), 130);
   const cardHeight = Math.round(cardWidth * 1.52);
   const trackShift = width >= DefaultTheme.layout.desktop ? Math.min(10, width * 0.009) : 0;
+  const count = items.length;
 
   useEffect(() => {
+    setActiveIndex((current) => (count === 0 ? 0 : Math.min(current, count - 1)));
+  }, [count]);
+
+  useEffect(() => {
+    if (count < 2) {
+      return;
+    }
+
     const interval = setInterval(() => {
-      setActiveIndex((current) => (current + 1) % carouselImages.length);
+      setActiveIndex((current) => (current + 1) % count);
     }, 2000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [count]);
+
+  if (count === 0) {
+    return null;
+  }
 
   return (
     <View style={[styles.stage, { height: cardHeight * 1.28 + 40 }]}>
-      {carouselImages.map((source, index) => (
+      {items.map((item, index) => (
         <CarouselCard
-          key={source}
-          source={source}
+          key={item.id}
+          source={item.uri}
           cardWidth={cardWidth}
           cardHeight={cardHeight}
-          distance={circularDistance(index, activeIndex, carouselImages.length)}
+          distance={circularDistance(index, activeIndex, count)}
           trackShift={trackShift}
         />
       ))}

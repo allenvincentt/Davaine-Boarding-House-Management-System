@@ -1,15 +1,29 @@
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { AppIcon } from '@/components/ui/AppIcon';
 import { DefaultTheme } from '@/constants/defaultTheme';
-import type { RoomInfo } from '@/constants/landing';
+import type { PublicRoomModel } from '@/models/contentModel';
 
 import { InteractiveCard } from './InteractiveCard';
 
-export function RoomCard({ room }: { room: RoomInfo }) {
+export function RoomCard({
+  room,
+  onPressDetails,
+}: {
+  room: PublicRoomModel;
+  onPressDetails?: (room: PublicRoomModel) => void;
+}) {
   return (
     <InteractiveCard borderEffect="race" style={styles.card}>
       <View style={styles.imageWrap}>
-        <Image source={{ uri: room.image }} style={styles.image} resizeMode="cover" />
+        {room.coverPhoto ? (
+          <Image source={{ uri: room.coverPhoto.uri }} style={styles.image} resizeMode="cover" />
+        ) : (
+          <View style={styles.imageFallback}>
+            <AppIcon name="rooms" size={26} tintColor={DefaultTheme.colors.muted} />
+            <Text style={styles.imageFallbackText}>No photo uploaded yet</Text>
+          </View>
+        )}
         <View style={[styles.status, room.available ? styles.available : styles.occupied]}>
           <Text
             adjustsFontSizeToFit
@@ -23,24 +37,30 @@ export function RoomCard({ room }: { room: RoomInfo }) {
       <View style={styles.body}>
         <View style={styles.titleRow}>
           <Text maxFontSizeMultiplier={1.15} numberOfLines={1} style={styles.name}>
-            {room.name}
+            {room.headline}
           </Text>
           <Text maxFontSizeMultiplier={1.15} numberOfLines={1} style={styles.rating}>
-            ☆ {room.rating}
+            ☆ {room.ratingLabel}
           </Text>
         </View>
         <View style={styles.tags}>
-          <Tag label={room.capacity} />
-          <Tag label="Air-Conditioned" />
+          <Tag label={room.capacityLabel} />
+          {room.amenities.slice(0, 1).map((amenity) => (
+            <Tag key={amenity} label={amenity} />
+          ))}
         </View>
         <View style={styles.rateRow}>
           <View>
             <Text style={styles.rateLabel}>MONTHLY RATE</Text>
-            <Text style={styles.rate}>{room.rate}</Text>
+            <Text style={styles.rate}>{room.rateLabel}</Text>
           </View>
-          <View style={styles.details}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`View details for ${room.label}`}
+            style={styles.details}
+            onPress={() => onPressDetails?.(room)}>
             <Text style={styles.detailsText}>Details</Text>
-          </View>
+          </Pressable>
         </View>
       </View>
     </InteractiveCard>
@@ -69,6 +89,18 @@ const styles = StyleSheet.create({
   image: {
     width: '100%',
     height: '100%',
+  },
+  imageFallback: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  imageFallbackText: {
+    color: DefaultTheme.colors.muted,
+    fontFamily: DefaultTheme.fonts.bodyMedium,
+    fontSize: 11.5,
   },
   status: {
     position: 'absolute',

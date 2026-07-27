@@ -1,5 +1,13 @@
 import type { ReactNode } from 'react';
-import { Animated, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import {
+  Animated,
+  StyleSheet,
+  Text,
+  View,
+  type LayoutChangeEvent,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 
 import { DefaultTheme } from '@/constants/defaultTheme';
 import { useEntranceProgress } from '@/hooks/useEntranceAnimation';
@@ -13,13 +21,23 @@ type CardProps = {
   children?: ReactNode;
   revealDelay?: number;
   style?: StyleProp<ViewStyle>;
+  onLayout?: (event: LayoutChangeEvent) => void;
 };
 
-export function Card({ title, subtitle, action, children, revealDelay, style }: CardProps) {
+export function Card({
+  title,
+  subtitle,
+  action,
+  children,
+  revealDelay,
+  style,
+  onLayout,
+}: CardProps) {
   const reveal = useEntranceProgress(REVEAL_DURATION, revealDelay ?? 0, revealDelay !== undefined);
 
   return (
     <Animated.View
+      onLayout={onLayout}
       style={[
         styles.card,
         style,

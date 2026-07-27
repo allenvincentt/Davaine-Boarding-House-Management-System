@@ -185,12 +185,23 @@ export async function listRooms(): Promise<RoomModel[]> {
   return settle(sortRooms(store).map(cloneRoom));
 }
 
-export async function addRenters(roomId: string, renters: RenterDraft[]): Promise<RoomModel> {
+export async function addRenters(
+  roomId: string,
+  renters: RenterDraft[],
+  rate?: number,
+): Promise<RoomModel> {
   const room = requireRoom(roomId);
   const incoming = toTenants(renters, []);
 
   if (incoming.length === 0) {
     throw new Error('Add at least one tenant name.');
+  }
+
+  if (rate !== undefined) {
+    if (!Number.isFinite(rate) || rate <= 0) {
+      throw new Error('Enter a valid room rate.');
+    }
+    room.rate = Math.round(rate);
   }
 
   room.tenants = [...room.tenants, ...incoming];

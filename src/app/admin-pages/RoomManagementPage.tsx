@@ -11,7 +11,6 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   AddNewRenterModal,
@@ -22,6 +21,7 @@ import { MainContentArea } from '@/components/layout/MainContentArea';
 import { AppIcon } from '@/components/ui/AppIcon';
 import { GradientButton } from '@/components/ui/buttons/GradientButton';
 import { MatchaButton } from '@/components/ui/buttons/MatchaButton';
+import { PageFabStack, usePageScrollNavigator } from '@/components/ui/buttons/PageFabStack';
 import { Card } from '@/components/ui/cards/Card';
 import { KPICard, KPICardsRow } from '@/components/ui/cards/KPICards';
 import { ConfirmDialog } from '@/components/ui/modals/ConfirmDialog';
@@ -37,8 +37,6 @@ import {
   dueSummaryOf,
   formatPeso,
   formatShortDate,
-  isDueThisWeek,
-  isDueToday,
   nextDueDate,
   roomBuildings,
   roomLabel,
@@ -66,12 +64,54 @@ const statusTone: Record<RoomStatus, { color: string; background: string }> = {
 const OCCUPIED_COLOR = '#4EA4E5';
 const AVAILABLE_COLOR = '#4C8A2E';
 const TENANT_COLOR = '#7C5CD6';
-const DUE_TODAY_COLOR = '#C98A1E';
-const DUE_WEEK_COLOR = '#C4453B';
 
 const TOTAL_TENANT_COLUMN_WIDTH = 700;
 const DUE_COLUMN_WIDTH = 880;
 const MOBILE_TENANT_PREVIEW = 3;
+
+type ActivityItem = {
+  id: string;
+  title: string;
+  subtitle: string;
+  badge: string;
+  badgeColor: string;
+  badgeBackground: string;
+  dotColor: string;
+  time: string;
+};
+
+const recentActivity: ActivityItem[] = [
+  {
+    id: 'a1',
+    title: 'Room 5-A rate updated to ₱ 1,800',
+    subtitle: 'Paolo Mendoza',
+    badge: 'Room Rate',
+    badgeColor: '#2E8A57',
+    badgeBackground: '#E4F5EA',
+    dotColor: '#2E8A57',
+    time: '9:12 AM',
+  },
+  {
+    id: 'a2',
+    title: 'New renter moved into Room 1-B',
+    subtitle: 'Mika Tolentino',
+    badge: 'Move-in',
+    badgeColor: '#4EA4E5',
+    badgeBackground: DefaultTheme.colors.softBlue,
+    dotColor: '#4EA4E5',
+    time: '8:45 AM',
+  },
+  {
+    id: 'a3',
+    title: 'Room 2-B marked as available',
+    subtitle: 'Bldg. B · Ready for new renters',
+    badge: 'Released',
+    badgeColor: '#C98A1E',
+    badgeBackground: DefaultTheme.colors.softGold,
+    dotColor: '#C98A1E',
+    time: 'Yesterday',
+  },
+];
 
 function initialsOf(name: string) {
   const parts = name.split(' ').filter(Boolean);
@@ -85,9 +125,9 @@ function openExternal(url: string) {
 
 export default function RoomManagementPage() {
   const { width } = useWindowDimensions();
-  const { bottom: safeAreaBottom } = useSafeAreaInsets();
   const compact = width < DefaultTheme.layout.compactNavigation;
   const { profile } = useAuth();
+  const scrollNavigator = usePageScrollNavigator();
 
   const role = profile?.userRole ?? null;
   const canCreate = can(role, 'create', 'rooms');
@@ -155,11 +195,27 @@ export default function RoomManagementPage() {
 
   const totalRooms = rooms.length;
   const occupiedRooms = rooms.filter((room) => roomStatusOf(room) === 'Occupied').length;
-  const availableRooms = totalRooms - occupiedRooms;
   const totalTenants = rooms.reduce((sum, room) => sum + room.tenants.length, 0);
-  const dueTodayCount = rooms.filter((room) => isDueToday(room)).length;
-  const dueThisWeekCount = rooms.filter((room) => isDueThisWeek(room)).length;
   const occupancyRate = totalRooms === 0 ? 0 : Math.round((occupiedRooms / totalRooms) * 100);
+
+  const buildingStats = useMemo(() => {
+    const base = {
+      A: { total: 0, occupied: 0, available: 0 },
+      B: { total: 0, occupied: 0, available: 0 },
+    } satisfies Record<RoomBuilding, { total: number; occupied: number; available: number }>;
+
+    rooms.forEach((room) => {
+      const stats = base[room.building];
+      stats.total += 1;
+      if (roomStatusOf(room) === 'Occupied') {
+        stats.occupied += 1;
+      } else {
+        stats.available += 1;
+      }
+    });
+
+    return base;
+  }, [rooms]);
 
   const filtered = useMemo(() => {
     const term = query.trim().toLowerCase();
@@ -223,12 +279,12 @@ export default function RoomManagementPage() {
 
   const handleCreate = useCallback(
     async (input: AddRenterSubmit) => {
-      const updated = await addRenters(input.roomId, input.renters);
+      const updated = await addRenters(input.roomId, input.renters, input.rate);
       applyRoom(updated);
       setNotice(
-        `${input.renters.length} renter(s) were added to ${roomLabel(updated)}. The room is now ${roomStatusOf(
-          updated,
-        ).toLowerCase()}.`,
+        `${input.renters.length} renter(s) were added to ${roomLabel(updated)} at ${formatPeso(
+          updated.rate,
+        )} per month. The room is now ${roomStatusOf(updated).toLowerCase()}.`,
       );
     },
     [applyRoom],
@@ -390,7 +446,7 @@ export default function RoomManagementPage() {
 
   return (
     <View style={styles.page}>
-      <MainContentArea>
+      <MainContentArea {...scrollNavigator.scrollProps}>
         <View style={styles.headerRow}>
           <View style={styles.headerText}>
             <Text style={styles.title}>Room Management</Text>
@@ -419,28 +475,8 @@ export default function RoomManagementPage() {
             iconColor={DefaultTheme.colors.primary}
             iconBackground={DefaultTheme.colors.softOlive}
             accentColor={DefaultTheme.colors.primary}
-            caption="Bldg. A and Bldg. B"
-            progress={1}
-          />
-          <KPICard
-            label="Occupied Rooms"
-            value={occupiedRooms}
-            icon="rooms"
-            iconColor={OCCUPIED_COLOR}
-            iconBackground={DefaultTheme.colors.softBlue}
-            accentColor={OCCUPIED_COLOR}
             caption={`${occupancyRate}% occupancy rate`}
-            progress={totalRooms === 0 ? 0 : occupiedRooms / totalRooms}
-          />
-          <KPICard
-            label="Available Rooms"
-            value={availableRooms}
-            icon="doorOpen"
-            iconColor={AVAILABLE_COLOR}
-            iconBackground="#E4F5EA"
-            accentColor={AVAILABLE_COLOR}
-            caption="Ready for new renters"
-            progress={totalRooms === 0 ? 0 : availableRooms / totalRooms}
+            progress={1}
           />
           <KPICard
             label="Total Tenants"
@@ -453,28 +489,48 @@ export default function RoomManagementPage() {
             progress={1}
           />
           <KPICard
-            label="Due Payments Today"
-            value={dueTodayCount}
-            icon="payment"
-            iconColor={DUE_TODAY_COLOR}
-            iconBackground={DefaultTheme.colors.softGold}
-            accentColor={DUE_TODAY_COLOR}
-            caption="Requires immediate action"
-            progress={occupiedRooms === 0 ? 0 : dueTodayCount / occupiedRooms}
+            label="Bldg. A Occupied Rooms"
+            value={buildingStats.A.occupied}
+            icon="rooms"
+            iconColor={OCCUPIED_COLOR}
+            iconBackground={DefaultTheme.colors.softBlue}
+            accentColor={OCCUPIED_COLOR}
+            caption={`of ${buildingStats.A.total} room(s) in Bldg. A`}
+            progress={buildingStats.A.total === 0 ? 0 : buildingStats.A.occupied / buildingStats.A.total}
           />
           <KPICard
-            label="Due This Week"
-            value={dueThisWeekCount}
-            icon="calendar"
-            iconColor={DUE_WEEK_COLOR}
-            iconBackground="#FBE7E5"
-            accentColor={DUE_WEEK_COLOR}
-            caption="Upcoming collections"
-            progress={occupiedRooms === 0 ? 0 : dueThisWeekCount / occupiedRooms}
+            label="Bldg. B Available Rooms"
+            value={buildingStats.B.available}
+            icon="doorOpen"
+            iconColor={AVAILABLE_COLOR}
+            iconBackground="#E4F5EA"
+            accentColor={AVAILABLE_COLOR}
+            caption={`of ${buildingStats.B.total} room(s) in Bldg. B`}
+            progress={buildingStats.B.total === 0 ? 0 : buildingStats.B.available / buildingStats.B.total}
+          />
+          <KPICard
+            label="Bldg. B Occupied Rooms"
+            value={buildingStats.B.occupied}
+            icon="rooms"
+            iconColor={OCCUPIED_COLOR}
+            iconBackground={DefaultTheme.colors.softBlue}
+            accentColor={OCCUPIED_COLOR}
+            caption={`of ${buildingStats.B.total} room(s) in Bldg. B`}
+            progress={buildingStats.B.total === 0 ? 0 : buildingStats.B.occupied / buildingStats.B.total}
+          />
+          <KPICard
+            label="Bldg. A Available Rooms"
+            value={buildingStats.A.available}
+            icon="doorOpen"
+            iconColor={AVAILABLE_COLOR}
+            iconBackground="#E4F5EA"
+            accentColor={AVAILABLE_COLOR}
+            caption={`of ${buildingStats.A.total} room(s) in Bldg. A`}
+            progress={buildingStats.A.total === 0 ? 0 : buildingStats.A.available / buildingStats.A.total}
           />
         </KPICardsRow>
 
-        <Card style={styles.tableCard} revealDelay={320}>
+        <Card style={styles.tableCard} revealDelay={320} {...scrollNavigator.targetProps}>
           {(notice || actionError || loadError) && (
             <Banner
               tone={actionError || loadError ? 'error' : 'success'}
@@ -559,16 +615,46 @@ export default function RoomManagementPage() {
             </Text>
           )}
         </Card>
+
+        <Card
+          title="Recent Activity"
+          subtitle="Latest room and tenant updates"
+          style={styles.activityCard}
+          revealDelay={400}
+          action={<Text style={styles.viewAll}>View all</Text>}>
+          {recentActivity.map((item, index) => (
+            <View
+              key={item.id}
+              style={[styles.activityRow, index === recentActivity.length - 1 && styles.rowLast]}>
+              <View style={[styles.activityDot, { backgroundColor: item.dotColor }]} />
+              <View style={styles.activityBody}>
+                <Text style={styles.activityTitle} numberOfLines={1}>
+                  {item.title}
+                </Text>
+                <Text style={styles.activitySubtitle} numberOfLines={1}>
+                  {item.subtitle}
+                </Text>
+              </View>
+              <View style={styles.activityMeta}>
+                <View style={[styles.activityBadge, { backgroundColor: item.badgeBackground }]}>
+                  <Text style={[styles.activityBadgeText, { color: item.badgeColor }]}>
+                    {item.badge}
+                  </Text>
+                </View>
+                <Text style={styles.activityTime}>{item.time}</Text>
+              </View>
+            </View>
+          ))}
+        </Card>
       </MainContentArea>
 
-      {compact && canCreate && (
-        <GradientButton
-          variant="fab"
-          accessibilityLabel="Add new renters"
-          style={{ bottom: Math.max(safeAreaBottom, 10) + 82 }}
-          onPress={openAdd}>
-          <AppIcon name="userPlus" size={22} tintColor={DefaultTheme.colors.white} />
-        </GradientButton>
+      {compact && (
+        <PageFabStack
+          navigator={scrollNavigator}
+          primaryIcon={canCreate ? 'userPlus' : undefined}
+          primaryLabel="Add new renters"
+          onPrimaryPress={canCreate ? openAdd : undefined}
+        />
       )}
 
       <Select
@@ -1083,6 +1169,64 @@ const styles = StyleSheet.create({
   },
   tableCard: {
     width: '100%',
+  },
+  activityCard: {
+    width: '100%',
+  },
+  viewAll: {
+    color: DefaultTheme.colors.primary,
+    fontFamily: DefaultTheme.fonts.bodyBold,
+    fontSize: 12,
+  },
+  activityRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: DefaultTheme.colors.line,
+  },
+  rowLast: {
+    borderBottomWidth: 0,
+  },
+  activityDot: {
+    marginTop: 5,
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  activityBody: {
+    flex: 1,
+    minWidth: 0,
+  },
+  activityTitle: {
+    color: DefaultTheme.colors.ink,
+    fontFamily: DefaultTheme.fonts.bodySemiBold,
+    fontSize: 13,
+  },
+  activitySubtitle: {
+    marginTop: 2,
+    color: DefaultTheme.colors.muted,
+    fontFamily: DefaultTheme.fonts.bodyMedium,
+    fontSize: 11.5,
+  },
+  activityMeta: {
+    alignItems: 'flex-end',
+    gap: 4,
+  },
+  activityBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: DefaultTheme.radius.pill,
+  },
+  activityBadgeText: {
+    fontFamily: DefaultTheme.fonts.bodyBold,
+    fontSize: 10,
+  },
+  activityTime: {
+    color: DefaultTheme.colors.muted,
+    fontFamily: DefaultTheme.fonts.bodyMedium,
+    fontSize: 10.5,
   },
   banner: {
     flexDirection: 'row',

@@ -10,7 +10,6 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BillReceiptModal, billStatusTone } from '@/app/admin-pages/BillReceiptModal';
 import { GenerateBillsModal } from '@/app/admin-pages/GenerateBillsModal';
@@ -18,6 +17,7 @@ import { RecordPaymentModal } from '@/app/admin-pages/RecordPaymentModal';
 import { MainContentArea } from '@/components/layout/MainContentArea';
 import { AppIcon } from '@/components/ui/AppIcon';
 import { GradientButton } from '@/components/ui/buttons/GradientButton';
+import { PageFabStack, usePageScrollNavigator } from '@/components/ui/buttons/PageFabStack';
 import { Card } from '@/components/ui/cards/Card';
 import { KPICard, KPICardsRow } from '@/components/ui/cards/KPICards';
 import { ConfirmDialog } from '@/components/ui/modals/ConfirmDialog';
@@ -80,9 +80,9 @@ const statusFilters: StatusFilter[] = ['All', 'Unpaid', 'Partial', 'Paid', 'No C
 
 export default function BillsPage() {
   const { width } = useWindowDimensions();
-  const { bottom: safeAreaBottom } = useSafeAreaInsets();
   const compact = width < DefaultTheme.layout.compactNavigation;
   const { profile } = useAuth();
+  const scrollNavigator = usePageScrollNavigator();
 
   const role = profile?.userRole ?? null;
   const canCreate = can(role, 'create', 'bills');
@@ -516,7 +516,7 @@ export default function BillsPage() {
 
   return (
     <View style={styles.page}>
-      <MainContentArea>
+      <MainContentArea {...scrollNavigator.scrollProps}>
         <View style={styles.headerRow}>
           <View style={styles.headerText}>
             <Text style={styles.title}>Bills</Text>
@@ -710,7 +710,7 @@ export default function BillsPage() {
           )}
         </Card>
 
-        <Card style={styles.card} revealDelay={360}>
+        <Card style={styles.card} revealDelay={360} {...scrollNavigator.targetProps}>
           <View style={styles.toolbar}>
             <SearchField
               value={query}
@@ -830,14 +830,14 @@ export default function BillsPage() {
         )}
       </MainContentArea>
 
-      {compact && canCreate && (
-        <GradientButton
-          variant="fab"
-          accessibilityLabel="Generate monthly bills"
-          style={{ bottom: Math.max(safeAreaBottom, 10) + 82 }}
-          onPress={() => openGenerate()}>
-          <AppIcon name="plus" size={22} tintColor={DefaultTheme.colors.white} />
-        </GradientButton>
+      {compact && (
+        <PageFabStack
+          navigator={scrollNavigator}
+          primaryIcon={canCreate ? 'plus' : undefined}
+          primaryLabel="Generate monthly bills"
+          onPrimaryPress={canCreate ? () => openGenerate() : undefined}
+          downLabel="To Bills"
+        />
       )}
 
       <Select

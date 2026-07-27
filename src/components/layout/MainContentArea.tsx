@@ -1,23 +1,46 @@
-import type { ReactNode } from 'react';
-import { RefreshControl, ScrollView, StyleSheet, useWindowDimensions } from 'react-native';
+import type { ReactNode, RefObject } from 'react';
+import {
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  useWindowDimensions,
+  type ScrollViewProps,
+} from 'react-native';
 
 import { usePageRefresh } from '@/components/layout/PageRefreshContext';
 import { DefaultTheme } from '@/constants/defaultTheme';
 
 type MainContentAreaProps = {
   children: ReactNode;
+  scrollRef?: RefObject<ScrollView | null>;
+  scrollEventThrottle?: number;
+  onScroll?: ScrollViewProps['onScroll'];
+  onLayout?: ScrollViewProps['onLayout'];
+  onContentSizeChange?: ScrollViewProps['onContentSizeChange'];
 };
 
-export function MainContentArea({ children }: MainContentAreaProps) {
+export function MainContentArea({
+  children,
+  scrollRef,
+  scrollEventThrottle,
+  onScroll,
+  onLayout,
+  onContentSizeChange,
+}: MainContentAreaProps) {
   const { width } = useWindowDimensions();
   const compact = width < DefaultTheme.layout.compactNavigation;
   const { enabled, refreshing, onRefresh } = usePageRefresh();
 
   return (
     <ScrollView
+      ref={scrollRef}
       style={styles.scroll}
       contentContainerStyle={[styles.scrollContent, compact && styles.scrollContentMobile]}
       showsVerticalScrollIndicator={false}
+      scrollEventThrottle={scrollEventThrottle}
+      onScroll={onScroll}
+      onLayout={onLayout}
+      onContentSizeChange={onContentSizeChange}
       refreshControl={
         enabled ? (
           <RefreshControl

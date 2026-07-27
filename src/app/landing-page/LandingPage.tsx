@@ -1,9 +1,12 @@
+import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Animated,
   Easing,
   Linking,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,10 +16,11 @@ import {
   type LayoutChangeEvent,
 } from 'react-native';
 
+import { RoomDetailsModal } from '@/app/landing-page/RoomDetailsModal';
 import { NavBar } from '@/components/layout/NavBar';
 import { ScrollReveal } from '@/components/layout/ScrollReveal';
 import { AppIcon } from '@/components/ui/AppIcon';
-import { CurvedCarousel } from '@/components/ui/CurvedCarousel';
+import { CurvedCarousel, type CarouselItem } from '@/components/ui/CurvedCarousel';
 import { MapEmbed } from '@/components/ui/MapEmbed';
 import { GlowingButton } from '@/components/ui/buttons/GlowingButton';
 import { MatchaButton } from '@/components/ui/buttons/MatchaButton';
@@ -30,10 +34,11 @@ import {
   billingSteps,
   communityContact,
   landingNavigation,
-  rooms,
   waterPolicies,
   type LandingSection,
 } from '@/constants/landing';
+import type { PublicRoomModel } from '@/models/contentModel';
+import { listCarouselSlides, listPublicRooms } from '@/services/contentService';
 
 export default function LandingPage() {
   const { width, height } = useWindowDimensions();
@@ -51,6 +56,50 @@ export default function LandingPage() {
     about: 0,
   });
   const compactNavigation = width < DefaultTheme.layout.compactNavigation;
+
+  const [slides, setSlides] = useState<CarouselItem[]>([]);
+  const [availableRooms, setAvailableRooms] = useState<PublicRoomModel[]>([]);
+  const [roomsLoading, setRoomsLoading] = useState(true);
+  const [detailsRoom, setDetailsRoom] = useState<PublicRoomModel | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const contentActiveRef = useRef(true);
+
+  useEffect(() => {
+    contentActiveRef.current = true;
+    return () => {
+      contentActiveRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    listCarouselSlides()
+      .then((rows) => {
+        if (contentActiveRef.current) {
+          setSlides(rows.map((slide) => ({ id: slide.id, uri: slide.uri })));
+        }
+      })
+      .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    listPublicRooms()
+      .then((rows) => {
+        if (contentActiveRef.current) {
+          setAvailableRooms(rows.filter((room) => room.available));
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (contentActiveRef.current) {
+          setRoomsLoading(false);
+        }
+      });
+  }, []);
+
+  const openRoomDetails = useCallback((room: PublicRoomModel) => {
+    setDetailsRoom(room);
+    setDetailsOpen(true);
+  }, []);
 
   const scheduleActiveSection = (section: LandingSection) => {
     if (activeSectionRef.current === section) {
@@ -150,10 +199,15 @@ export default function LandingPage() {
         scrollEventThrottle={16}
         onScroll={(event) => handleScroll(event.nativeEvent.contentOffset.y)}>
         <ScrollReveal scrollY={scrollY} onLayout={registerSection('home')}>
-          <HomeSection onGetStarted={() => navigateTo('rooms')} />
+          <HomeSection slides={slides} onGetStarted={() => navigateTo('rooms')} />
         </ScrollReveal>
         <ScrollReveal scrollY={scrollY} enabled={false} onLayout={registerSection('rooms')}>
-          <RoomsSection scrollY={scrollY} />
+          <RoomsSection
+            scrollY={scrollY}
+            rooms={availableRooms}
+            loading={roomsLoading}
+            onPressDetails={openRoomDetails}
+          />
         </ScrollReveal>
         <ScrollReveal scrollY={scrollY} enabled={false} onLayout={registerSection('billing')}>
           <BillingSection scrollY={scrollY} />
@@ -163,11 +217,30 @@ export default function LandingPage() {
           <FooterSection onNavigate={navigateTo} scrollY={scrollY} />
         </ScrollReveal>
       </ScrollView>
+
+      <RoomDetailsModal
+        visible={detailsOpen}
+        room={detailsRoom}
+        onClose={() => setDetailsOpen(false)}
+        onInquire={(room) =>
+          Linking.openURL(
+            `mailto:${communityContact.email}?subject=${encodeURIComponent(
+              `Inquiry about ${room.label}`,
+            )}`,
+          ).catch(() => undefined)
+        }
+      />
     </View>
   );
 }
 
-function HomeSection({ onGetStarted }: { onGetStarted: () => void }) {
+function HomeSection({
+  slides,
+  onGetStarted,
+}: {
+  slides: CarouselItem[];
+  onGetStarted: () => void;
+}) {
   const { width } = useWindowDimensions();
   const compact = width < DefaultTheme.layout.tablet;
 
@@ -186,15 +259,26 @@ function HomeSection({ onGetStarted }: { onGetStarted: () => void }) {
         </Text>
       </View>
       <View style={styles.carouselWrap}>
-        <CurvedCarousel />
+        <CurvedCarousel items={slides} />
       </View>
       <GlowingButton label="Get Started" onPress={onGetStarted} style={styles.getStartedButton} />
     </View>
   );
 }
 
-function RoomsSection({ scrollY }: { scrollY: number }) {
+function RoomsSection({
+  scrollY,
+  rooms,
+  loading,
+  onPressDetails,
+}: {
+  scrollY: number;
+  rooms: PublicRoomModel[];
+  loading: boolean;
+  onPressDetails: (room: PublicRoomModel) => void;
+}) {
   const { width } = useWindowDimensions();
+  const router = useRouter();
   const roomWidth: DimensionValue =
     width >= DefaultTheme.layout.wide ? '31.9%' : width >= DefaultTheme.layout.tablet ? '48.6%' : '100%';
   const amenityWidth: DimensionValue =
@@ -209,19 +293,34 @@ function RoomsSection({ scrollY }: { scrollY: number }) {
             title="Designed for Affordable Living"
             description="Find the perfect room that fits your style."
             trailing="View All Rooms"
+            onPressTrailing={() => router.push('/landing-page/AllRoomsPage')}
           />
         </ScrollReveal>
-        <View style={styles.roomsGrid}>
-          {rooms.map((room, index) => (
-            <ScrollReveal
-              key={room.name}
-              scrollY={scrollY}
-              delay={index * 120}
-              style={{ width: roomWidth }}>
-              <RoomCard room={room} />
-            </ScrollReveal>
-          ))}
-        </View>
+        {loading ? (
+          <View style={styles.roomsLoading}>
+            <ActivityIndicator color={DefaultTheme.colors.primary} />
+            <Text style={styles.roomsLoadingText}>Loading available rooms…</Text>
+          </View>
+        ) : rooms.length === 0 ? (
+          <View style={styles.roomsEmpty}>
+            <AppIcon name="inbox" size={22} tintColor={DefaultTheme.colors.muted} />
+            <Text style={styles.roomsEmptyText}>
+              Every room is occupied right now. Check back soon or contact us to join the waitlist.
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.roomsGrid}>
+            {rooms.map((room, index) => (
+              <ScrollReveal
+                key={room.roomId}
+                scrollY={scrollY}
+                delay={index * 120}
+                style={{ width: roomWidth }}>
+                <RoomCard room={room} onPressDetails={onPressDetails} />
+              </ScrollReveal>
+            ))}
+          </View>
+        )}
         <View style={styles.amenityGrid}>
           {amenities.map((amenity, index) => (
             <ScrollReveal
@@ -467,11 +566,13 @@ function SectionHeading({
   title,
   description,
   trailing,
+  onPressTrailing,
 }: {
   eyebrow: string;
   title: string;
   description?: string;
   trailing?: string;
+  onPressTrailing?: () => void;
 }) {
   return (
     <View style={styles.sectionHeading}>
@@ -480,7 +581,19 @@ function SectionHeading({
         <Text style={styles.sectionTitle}>{title}</Text>
         {description && <Text style={styles.sectionDescription}>{description}</Text>}
       </View>
-      {trailing && <Text style={styles.sectionTrailing}>{trailing}</Text>}
+      {trailing &&
+        (onPressTrailing ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={trailing}
+            style={styles.sectionTrailingButton}
+            onPress={onPressTrailing}>
+            <Text style={styles.sectionTrailing}>{trailing}</Text>
+            <AppIcon name="chevronRight" size={13} tintColor={DefaultTheme.colors.primary} />
+          </Pressable>
+        ) : (
+          <Text style={styles.sectionTrailing}>{trailing}</Text>
+        ))}
     </View>
   );
 }
@@ -711,6 +824,41 @@ const styles = StyleSheet.create({
     color: DefaultTheme.colors.primary,
     fontFamily: DefaultTheme.fonts.bodyBold,
     fontSize: 12,
+  },
+  sectionTrailingButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingLeft: 4,
+  },
+  roomsLoading: {
+    marginTop: 62,
+    alignItems: 'center',
+    gap: 10,
+  },
+  roomsLoadingText: {
+    color: DefaultTheme.colors.muted,
+    fontFamily: DefaultTheme.fonts.bodyMedium,
+    fontSize: 13,
+  },
+  roomsEmpty: {
+    marginTop: 62,
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 34,
+    paddingHorizontal: 24,
+    borderRadius: DefaultTheme.radius.md,
+    borderWidth: 1,
+    borderColor: DefaultTheme.colors.line,
+    backgroundColor: DefaultTheme.colors.white,
+  },
+  roomsEmptyText: {
+    maxWidth: 420,
+    textAlign: 'center',
+    color: DefaultTheme.colors.muted,
+    fontFamily: DefaultTheme.fonts.bodyMedium,
+    fontSize: 13,
+    lineHeight: 20,
   },
   roomsGrid: {
     marginTop: 62,

@@ -10,12 +10,12 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MainContentArea } from '@/components/layout/MainContentArea';
 import { AppIcon } from '@/components/ui/AppIcon';
 import { GradientButton } from '@/components/ui/buttons/GradientButton';
 import { MatchaButton } from '@/components/ui/buttons/MatchaButton';
+import { PageFabStack, usePageScrollNavigator } from '@/components/ui/buttons/PageFabStack';
 import { Card } from '@/components/ui/cards/Card';
 import { KPICard, KPICardsRow } from '@/components/ui/cards/KPICards';
 import { Input } from '@/components/ui/Input';
@@ -84,9 +84,9 @@ function avatarColorOf(name: string) {
 
 export default function UserManagementPage() {
   const { width } = useWindowDimensions();
-  const { bottom: safeAreaBottom } = useSafeAreaInsets();
   const compact = width < DefaultTheme.layout.compactNavigation;
   const { profile } = useAuth();
+  const scrollNavigator = usePageScrollNavigator();
 
   const role = profile?.userRole ?? null;
   const canCreate = can(role, 'create');
@@ -361,7 +361,7 @@ export default function UserManagementPage() {
 
   return (
     <View style={styles.page}>
-      <MainContentArea>
+      <MainContentArea {...scrollNavigator.scrollProps}>
         <View style={styles.headerRow}>
           <View style={styles.headerText}>
             <Text style={styles.title}>User Management</Text>
@@ -415,7 +415,7 @@ export default function UserManagementPage() {
           />
         </KPICardsRow>
 
-        <Card style={styles.tableCard} revealDelay={320}>
+        <Card style={styles.tableCard} revealDelay={320} {...scrollNavigator.targetProps}>
           {(notice || actionError || loadError) && (
             <Banner
               tone={actionError || loadError ? 'error' : 'success'}
@@ -483,14 +483,13 @@ export default function UserManagementPage() {
         </Card>
       </MainContentArea>
 
-      {compact && canCreate && (
-        <GradientButton
-          variant="fab"
-          accessibilityLabel="Add user"
-          style={{ bottom: Math.max(safeAreaBottom, 10) + 82 }}
-          onPress={() => openForm('create', null)}>
-          <AppIcon name="plus" size={24} tintColor={DefaultTheme.colors.white} />
-        </GradientButton>
+      {compact && (
+        <PageFabStack
+          navigator={scrollNavigator}
+          primaryIcon={canCreate ? 'plus' : undefined}
+          primaryLabel="Add user"
+          onPrimaryPress={canCreate ? () => openForm('create', null) : undefined}
+        />
       )}
 
       <Select

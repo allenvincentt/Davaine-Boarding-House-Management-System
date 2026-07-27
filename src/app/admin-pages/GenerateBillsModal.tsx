@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Pressable,
   StyleSheet,
@@ -10,9 +10,8 @@ import {
 } from 'react-native';
 
 import { AppIcon } from '@/components/ui/AppIcon';
-import { MatchaButton } from '@/components/ui/buttons/MatchaButton';
 import { FormSection, FormSectionHeader } from '@/components/ui/forms/RenterFieldList';
-import { Modal } from '@/components/ui/modals/Modal';
+import { StepperModal, type StepperStep } from '@/components/ui/modals/Modal';
 import { Select, type SelectAnchor, type SelectOption } from '@/components/ui/Select';
 import { DefaultTheme } from '@/constants/defaultTheme';
 import { buildingToneOf } from '@/constants/roomTheme';
@@ -33,7 +32,7 @@ import {
   type WaterMeterKey,
 } from '@/models/billModel';
 import { buildingLabel, formatPeso, roomBuildings, roomLabel } from '@/models/roomModel';
-import type { RoomModel } from '@/models/roomModel';
+import type { RoomBuilding, RoomModel } from '@/models/roomModel';
 import { prepareReadings, type GenerateBillsInput } from '@/services/billingService';
 
 type GenerateBillsModalProps = {
@@ -62,6 +61,10 @@ type ReadingField = 'previousReading' | 'currentReading' | 'numOfHeads' | 'garba
 
 const YEAR_SPAN_BACK = 2;
 const YEAR_SPAN_FORWARD = 1;
+
+const BILLING_STEP = 0;
+const READING_STEPS: Record<RoomBuilding, number> = { A: 1, B: 2 };
+const READINGS_ERROR = 'Check the highlighted room readings.';
 
 function toForm(reading: RoomReadingModel): ReadingForm {
   return {
@@ -122,6 +125,13 @@ export function GenerateBillsModal({
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [generalError, setGeneralError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [step, setStep] = useState(BILLING_STEP);
+
+  useEffect(() => {
+    if (visible) {
+      setStep(BILLING_STEP);
+    }
+  }, [visible]);
 
   const applyPeriod = useCallback(
     (nextYear: number, nextMonth: number) => {
@@ -246,7 +256,7 @@ export function GenerateBillsModal({
     } else if (missingWater) {
       general = 'Enter every DCWD water bill for this month.';
     } else if (Object.keys(errors).length > 0) {
-      general = 'Check the highlighted room readings.';
+      general = READINGS_ERROR;
     }
 
     return { errors, general };
@@ -261,6 +271,14 @@ export function GenerateBillsModal({
     if (general) {
       setFieldErrors(errors);
       setGeneralError(general);
+
+      const offending =
+        general === READINGS_ERROR
+          ? forms.find((form) =>
+              Object.keys(errors).some((key) => key.startsWith(`${form.roomId}:`)),
+            )
+          : null;
+      setStep(offending ? READING_STEPS[offending.building] : BILLING_STEP);
       return;
     }
 
@@ -304,27 +322,13 @@ export function GenerateBillsModal({
     return list;
   }, []);
 
-  return (
-    <Modal
-      visible={visible}
-      onClose={submitting ? () => undefined : onClose}
-      dismissOnBackdropPress={!submitting}
-      contentStyle={styles.shell}>
-      <View style={styles.body}>
-        <View style={styles.header}>
-          <View style={styles.headerBadge}>
-            <AppIcon name="money" size={20} tintColor={DefaultTheme.colors.primary} />
-          </View>
-          <View style={styles.headerText}>
-            <Text style={styles.title} numberOfLines={1}>
-              Generate Monthly Bills
-            </Text>
-            <Text style={styles.subtitle}>
-              Tally the Davao Light and DCWD bills, then encode each room&apos;s readings and heads.
-            </Text>
-          </View>
-        </View>
-
+  const steps: StepperStep[] = [
+    {
+      key: 'billing',
+      label: 'Billing Info',
+      icon: 'calendar',
+      caption: 'Billing period, Davao Light, DCWD, and CR maintenance rates.',
+      content: (
         <View style={styles.sections}>
           <FormSection>
             <FormSectionHeader
@@ -468,36 +472,73 @@ export function GenerateBillsModal({
               placeholder={String(CR_MAINTENANCE_RATE)}
             />
           </FormSection>
+        </View>
+      ),
+    },
+    ...roomBuildings.map<StepperStep>((building) => {
+      const group = forms.filter((form) => form.building === building);
+      const tone = buildingToneOf(building);
 
-          {roomBuildings.map((building) => {
-            const group = forms.filter((form) => form.building === building);
-            if (group.length === 0) {
-              return null;
-            }
-            const tone = buildingToneOf(building);
-
-            return (
-              <FormSection key={building}>
-                <FormSectionHeader
-                  icon="rooms"
-                  title={`${buildingLabel(building)} Readings`}
-                  caption="Previous and current meter readings, heads, and monthly fees."
-                  count={group.length}
-                  color={tone.color}
-                  background={tone.background}
+      return {
+        key: `readings-${building}`,
+        label: buildingLabel(building),
+        icon: 'gauge',
+        caption: `Meter readings, heads, and monthly fees for ${buildingLabel(building)}.`,
+        content:
+          group.length === 0 ? (
+            <View style={styles.emptyBlock}>
+              <AppIcon name="inbox" size={20} tintColor={DefaultTheme.colors.muted} />
+              <Text style={styles.emptyText}>
+                No rooms are registered under {buildingLabel(building)} yet.
+              </Text>
+            </View>
+          ) : (
+            <FormSection>
+              <FormSectionHeader
+                icon="rooms"
+                title={`${buildingLabel(building)} Readings`}
+                caption="Previous and current meter readings, heads, and monthly fees."
+                count={group.length}
+                color={tone.color}
+                background={tone.background}
+              />
+              {group.map((form) => (
+                <ReadingRow
+                  key={form.roomId}
+                  form={form}
+                  electricRate={numberOf(electricRate)}
+                  errors={fieldErrors}
+                  onChange={changeField}
                 />
-                {group.map((form) => (
-                  <ReadingRow
-                    key={form.roomId}
-                    form={form}
-                    electricRate={numberOf(electricRate)}
-                    errors={fieldErrors}
-                    onChange={changeField}
-                  />
-                ))}
-              </FormSection>
-            );
-          })}
+              ))}
+            </FormSection>
+          ),
+      };
+    }),
+    {
+      key: 'preview',
+      label: 'Preview',
+      icon: 'chart',
+      caption: `Monthly summary for ${periodLabelOf({ year, month })}.`,
+      content: (
+        <View style={styles.sections}>
+          <View style={styles.metricRow}>
+            <MetricChip
+              label="Total Consumption"
+              value={formatKwh(preview.totalConsumption)}
+              tone={DefaultTheme.colors.primary}
+            />
+            <MetricChip
+              label="Billed Rooms"
+              value={String(preview.billedRooms)}
+              tone={DefaultTheme.colors.muted}
+            />
+            <MetricChip
+              label="Total Heads"
+              value={String(preview.rates.totalHeads)}
+              tone="#2F73B8"
+            />
+          </View>
 
           <View style={styles.totalsCard}>
             <Text style={styles.totalsTitle}>Preview for {periodLabelOf({ year, month })}</Text>
@@ -512,27 +553,27 @@ export function GenerateBillsModal({
               emphasis
             />
           </View>
-
-          {!!generalError && <Text style={styles.formError}>{generalError}</Text>}
         </View>
+      ),
+    },
+  ];
 
-        <View style={styles.actions}>
-          <MatchaButton
-            label="Cancel"
-            variant="outline"
-            disabled={submitting}
-            style={styles.action}
-            onPress={onClose}
-          />
-          <MatchaButton
-            label={submitting ? 'Generating…' : existing ? 'Update Bills' : 'Generate Bills'}
-            disabled={submitting}
-            style={styles.action}
-            onPress={handleSubmit}
-          />
-        </View>
-      </View>
-    </Modal>
+  return (
+    <StepperModal
+      visible={visible}
+      onClose={onClose}
+      steps={steps}
+      step={step}
+      onStepChange={setStep}
+      title="Generate Monthly Bills"
+      subtitle="Tally the Davao Light and DCWD bills, then encode each room's readings and heads."
+      icon="money"
+      error={generalError}
+      submitting={submitting}
+      submitLabel={submitting ? 'Generating…' : existing ? 'Update Bills' : 'Generate Bills'}
+      onSubmit={handleSubmit}
+      contentStyle={styles.shell}
+    />
   );
 }
 
@@ -762,41 +803,22 @@ const styles = StyleSheet.create({
   shell: {
     maxWidth: 620,
   },
-  body: {
-    padding: DefaultTheme.spacing.lg,
+  sections: {
+    gap: 18,
   },
-  header: {
-    flexDirection: 'row',
+  emptyBlock: {
     alignItems: 'center',
-    gap: 12,
+    gap: 8,
+    paddingVertical: 26,
+    borderRadius: DefaultTheme.radius.md,
+    borderWidth: 1,
+    borderColor: DefaultTheme.colors.line,
+    backgroundColor: DefaultTheme.colors.white,
   },
-  headerBadge: {
-    width: 44,
-    height: 44,
-    borderRadius: DefaultTheme.radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: DefaultTheme.colors.softOlive,
-  },
-  headerText: {
-    flex: 1,
-    minWidth: 0,
-  },
-  title: {
-    color: DefaultTheme.colors.ink,
-    fontFamily: DefaultTheme.fonts.bodyBold,
-    fontSize: 17,
-  },
-  subtitle: {
-    marginTop: 3,
+  emptyText: {
     color: DefaultTheme.colors.muted,
     fontFamily: DefaultTheme.fonts.bodyMedium,
     fontSize: 12.5,
-    lineHeight: 17,
-  },
-  sections: {
-    marginTop: 20,
-    gap: 18,
   },
   periodRow: {
     flexDirection: 'row',
@@ -1028,20 +1050,5 @@ const styles = StyleSheet.create({
     color: DefaultTheme.colors.primary,
     fontFamily: DefaultTheme.fonts.bodyBold,
     fontSize: 15,
-  },
-  formError: {
-    color: '#D64545',
-    fontFamily: DefaultTheme.fonts.bodyMedium,
-    fontSize: 12.5,
-  },
-  actions: {
-    marginTop: 24,
-    flexDirection: 'row',
-    gap: 10,
-  },
-  action: {
-    flex: 1,
-    minHeight: 46,
-    paddingHorizontal: 12,
   },
 });
