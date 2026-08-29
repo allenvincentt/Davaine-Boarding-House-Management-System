@@ -411,33 +411,24 @@ export function NavBar({ activeSection, onNavigate, scrollY }: NavBarProps) {
       style={[
         styles.shell,
         {
-          paddingTop: safeAreaTop,
-          paddingBottom: desktopMorph.interpolate({ inputRange: [0, 1], outputRange: [0, 10] }),
-          paddingHorizontal: desktopMorph.interpolate({ inputRange: [0, 1], outputRange: [0, 14] }),
-          backgroundColor: desktopMorph.interpolate({
-            inputRange: [0, 1],
-            outputRange: ['rgba(249, 247, 240, 1)', 'rgba(249, 247, 240, 0)'],
-          }),
-          borderBottomColor: desktopMorph.interpolate({
-            inputRange: [0, 1],
-            outputRange: ['rgba(231, 229, 221, 1)', 'rgba(231, 229, 221, 0)'],
-          }),
+          paddingTop: safeAreaTop + 12,
+          paddingBottom: desktopMorph.interpolate({ inputRange: [0, 1], outputRange: [12, 10] }),
+          paddingHorizontal: desktopMorph.interpolate({ inputRange: [0, 1], outputRange: [16, 14] }),
         },
       ]}>
       <GlassPanel
-        variant="bar"
+        variant="floating"
         backgroundHint={DefaultTheme.colors.background}
         reflection
         sheen
         interaction={shellInteraction}
-        presence={desktopMorph}
         reflectionStyle={styles.desktopReflection}
         style={[
           styles.navbar,
           {
             height: desktopMorph.interpolate({ inputRange: [0, 1], outputRange: [66, 58] }),
             paddingHorizontal: desktopMorph.interpolate({ inputRange: [0, 1], outputRange: [28, 22] }),
-            borderRadius: desktopMorph.interpolate({ inputRange: [0, 1], outputRange: [0, 30] }),
+            borderRadius: desktopMorph.interpolate({ inputRange: [0, 1], outputRange: [30, 30] }),
           },
         ]}>
         <Pressable
@@ -823,8 +814,11 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   shell: {
-    borderBottomWidth: 1,
-    zIndex: 20,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 50,
   },
   navbar: {
     width: '100%',

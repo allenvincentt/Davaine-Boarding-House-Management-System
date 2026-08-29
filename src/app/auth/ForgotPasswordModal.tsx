@@ -242,6 +242,7 @@ export function ForgotPasswordModal({ visible, onClose, onBackToSignIn }: Forgot
         visible={visible}
         onClose={handleClose}
         dismissOnBackdropPress={!isSendingCode && !isResettingPassword}
+        sheetHandleFloating
         contentStyle={styles.modalContent}>
         <View style={styles.hero}>
           <View

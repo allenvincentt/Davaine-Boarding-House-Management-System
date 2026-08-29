@@ -37,7 +37,7 @@ export function ConfirmDialog({
   };
 
   return (
-    <Modal visible={visible} onClose={onClose} contentStyle={styles.shell}>
+    <Modal visible={visible} onClose={onClose} contentStyle={styles.shell} sheetOnMobile={false}>
       <View style={styles.body}>
         <View
           style={[

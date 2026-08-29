@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Linking,
   Pressable,
   StyleSheet,
@@ -12,6 +11,9 @@ import {
   type ViewStyle,
 } from 'react-native';
 
+import { PageMeta } from '@/components/common/PageMeta';
+import { SkeletonKPIRow, SkeletonTable } from '@/components/common/SkeletonLoader';
+import { useSnackbar } from '@/components/common/Snackbar';
 import {
   AddNewRenterModal,
   type AddRenterSubmit,
@@ -137,9 +139,7 @@ export default function RoomManagementPage() {
 
   const [rooms, setRooms] = useState<RoomModel[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
+  const snackbar = useSnackbar();
 
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('All');
@@ -162,6 +162,7 @@ export default function RoomManagementPage() {
   const [pendingRelease, setPendingRelease] = useState<RoomModel | null>(null);
 
   const activeRef = useRef(true);
+  const loadRef = useRef<() => void>(() => undefined);
 
   useEffect(() => {
     activeRef.current = true;
@@ -172,7 +173,6 @@ export default function RoomManagementPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    setLoadError(null);
     try {
       const rows = await listRooms();
       if (activeRef.current) {
@@ -180,16 +180,20 @@ export default function RoomManagementPage() {
       }
     } catch (error) {
       if (activeRef.current) {
-        setLoadError(error instanceof Error ? error.message : 'Unable to load rooms.');
+        snackbar.error(error instanceof Error ? error.message : 'Unable to load rooms.', {
+          actionLabel: 'Retry',
+          onAction: () => loadRef.current(),
+        });
       }
     } finally {
       if (activeRef.current) {
         setLoading(false);
       }
     }
-  }, []);
+  }, [snackbar]);
 
   useEffect(() => {
+    loadRef.current = load;
     load();
   }, [load]);
 
@@ -258,15 +262,11 @@ export default function RoomManagementPage() {
   }, []);
 
   const openAdd = useCallback(() => {
-    setNotice(null);
-    setActionError(null);
     setAddSession((current) => current + 1);
     setAddOpen(true);
   }, []);
 
   const openEdit = useCallback((room: RoomModel) => {
-    setNotice(null);
-    setActionError(null);
     setEditRoom(room);
     setEditSession((current) => current + 1);
     setEditOpen(true);
@@ -281,13 +281,13 @@ export default function RoomManagementPage() {
     async (input: AddRenterSubmit) => {
       const updated = await addRenters(input.roomId, input.renters, input.rate);
       applyRoom(updated);
-      setNotice(
+      snackbar.success(
         `${input.renters.length} renter(s) were added to ${roomLabel(updated)} at ${formatPeso(
           updated.rate,
         )} per month. The room is now ${roomStatusOf(updated).toLowerCase()}.`,
       );
     },
-    [applyRoom],
+    [applyRoom, snackbar],
   );
 
   const handleUpdate = useCallback(
@@ -297,24 +297,30 @@ export default function RoomManagementPage() {
         renters: input.renters,
       });
       applyRoom(updated);
-      setNotice(`${roomLabel(updated)} was updated to ${formatPeso(updated.rate)} per month.`);
+      snackbar.success(`${roomLabel(updated)} was updated to ${formatPeso(updated.rate)} per month.`);
     },
-    [applyRoom],
+    [applyRoom, snackbar],
   );
 
   const handleRelease = useCallback(
     async (room: RoomModel) => {
-      setActionError(null);
       const removed = room.tenants.length;
+      const pending = snackbar.loading(`Releasing ${roomLabel(room)}…`);
       try {
         const updated = await releaseRoom(room.id);
         applyRoom(updated);
-        setNotice(`${roomLabel(updated)} is now available. ${removed} tenant(s) were removed.`);
+        snackbar.update(pending, {
+          tone: 'success',
+          message: `${roomLabel(updated)} is now available. ${removed} tenant(s) were removed.`,
+        });
       } catch (error) {
-        setActionError(error instanceof Error ? error.message : 'The room could not be updated.');
+        snackbar.update(pending, {
+          tone: 'error',
+          message: error instanceof Error ? error.message : 'The room could not be updated.',
+        });
       }
     },
-    [applyRoom],
+    [applyRoom, snackbar],
   );
 
   const actionOptions = useMemo<SelectOption[]>(() => {
@@ -446,6 +452,7 @@ export default function RoomManagementPage() {
 
   return (
     <View style={styles.page}>
+      <PageMeta title="Room Management" description="Manage rooms, rates, and tenant assignments." />
       <MainContentArea {...scrollNavigator.scrollProps}>
         <View style={styles.headerRow}>
           <View style={styles.headerText}>
@@ -467,82 +474,74 @@ export default function RoomManagementPage() {
           )}
         </View>
 
-        <KPICardsRow>
-          <KPICard
-            label="Total Rooms"
-            value={totalRooms}
-            icon="rooms"
-            iconColor={DefaultTheme.colors.primary}
-            iconBackground={DefaultTheme.colors.softOlive}
-            accentColor={DefaultTheme.colors.primary}
-            caption={`${occupancyRate}% occupancy rate`}
-            progress={1}
-          />
-          <KPICard
-            label="Total Tenants"
-            value={totalTenants}
-            icon="users"
-            iconColor={TENANT_COLOR}
-            iconBackground="#EDE7F6"
-            accentColor={TENANT_COLOR}
-            caption={`Across ${occupiedRooms} occupied room(s)`}
-            progress={1}
-          />
-          <KPICard
-            label="Bldg. A Occupied Rooms"
-            value={buildingStats.A.occupied}
-            icon="rooms"
-            iconColor={OCCUPIED_COLOR}
-            iconBackground={DefaultTheme.colors.softBlue}
-            accentColor={OCCUPIED_COLOR}
-            caption={`of ${buildingStats.A.total} room(s) in Bldg. A`}
-            progress={buildingStats.A.total === 0 ? 0 : buildingStats.A.occupied / buildingStats.A.total}
-          />
-          <KPICard
-            label="Bldg. B Available Rooms"
-            value={buildingStats.B.available}
-            icon="doorOpen"
-            iconColor={AVAILABLE_COLOR}
-            iconBackground="#E4F5EA"
-            accentColor={AVAILABLE_COLOR}
-            caption={`of ${buildingStats.B.total} room(s) in Bldg. B`}
-            progress={buildingStats.B.total === 0 ? 0 : buildingStats.B.available / buildingStats.B.total}
-          />
-          <KPICard
-            label="Bldg. B Occupied Rooms"
-            value={buildingStats.B.occupied}
-            icon="rooms"
-            iconColor={OCCUPIED_COLOR}
-            iconBackground={DefaultTheme.colors.softBlue}
-            accentColor={OCCUPIED_COLOR}
-            caption={`of ${buildingStats.B.total} room(s) in Bldg. B`}
-            progress={buildingStats.B.total === 0 ? 0 : buildingStats.B.occupied / buildingStats.B.total}
-          />
-          <KPICard
-            label="Bldg. A Available Rooms"
-            value={buildingStats.A.available}
-            icon="doorOpen"
-            iconColor={AVAILABLE_COLOR}
-            iconBackground="#E4F5EA"
-            accentColor={AVAILABLE_COLOR}
-            caption={`of ${buildingStats.A.total} room(s) in Bldg. A`}
-            progress={buildingStats.A.total === 0 ? 0 : buildingStats.A.available / buildingStats.A.total}
-          />
-        </KPICardsRow>
+        {loading && rooms.length === 0 ? (
+          <SkeletonKPIRow count={6} label="Loading room figures" />
+        ) : (
+          <KPICardsRow>
+            <KPICard
+              label="Total Rooms"
+              value={totalRooms}
+              icon="rooms"
+              iconColor={DefaultTheme.colors.primary}
+              iconBackground={DefaultTheme.colors.softOlive}
+              accentColor={DefaultTheme.colors.primary}
+              caption={`${occupancyRate}% occupancy rate`}
+              progress={1}
+            />
+            <KPICard
+              label="Total Tenants"
+              value={totalTenants}
+              icon="users"
+              iconColor={TENANT_COLOR}
+              iconBackground="#EDE7F6"
+              accentColor={TENANT_COLOR}
+              caption={`Across ${occupiedRooms} occupied room(s)`}
+              progress={1}
+            />
+            <KPICard
+              label="Bldg. A Occupied Rooms"
+              value={buildingStats.A.occupied}
+              icon="rooms"
+              iconColor={OCCUPIED_COLOR}
+              iconBackground={DefaultTheme.colors.softBlue}
+              accentColor={OCCUPIED_COLOR}
+              caption={`of ${buildingStats.A.total} room(s) in Bldg. A`}
+              progress={buildingStats.A.total === 0 ? 0 : buildingStats.A.occupied / buildingStats.A.total}
+            />
+            <KPICard
+              label="Bldg. B Available Rooms"
+              value={buildingStats.B.available}
+              icon="doorOpen"
+              iconColor={AVAILABLE_COLOR}
+              iconBackground="#E4F5EA"
+              accentColor={AVAILABLE_COLOR}
+              caption={`of ${buildingStats.B.total} room(s) in Bldg. B`}
+              progress={buildingStats.B.total === 0 ? 0 : buildingStats.B.available / buildingStats.B.total}
+            />
+            <KPICard
+              label="Bldg. B Occupied Rooms"
+              value={buildingStats.B.occupied}
+              icon="rooms"
+              iconColor={OCCUPIED_COLOR}
+              iconBackground={DefaultTheme.colors.softBlue}
+              accentColor={OCCUPIED_COLOR}
+              caption={`of ${buildingStats.B.total} room(s) in Bldg. B`}
+              progress={buildingStats.B.total === 0 ? 0 : buildingStats.B.occupied / buildingStats.B.total}
+            />
+            <KPICard
+              label="Bldg. A Available Rooms"
+              value={buildingStats.A.available}
+              icon="doorOpen"
+              iconColor={AVAILABLE_COLOR}
+              iconBackground="#E4F5EA"
+              accentColor={AVAILABLE_COLOR}
+              caption={`of ${buildingStats.A.total} room(s) in Bldg. A`}
+              progress={buildingStats.A.total === 0 ? 0 : buildingStats.A.available / buildingStats.A.total}
+            />
+          </KPICardsRow>
+        )}
 
         <Card style={styles.tableCard} revealDelay={320} {...scrollNavigator.targetProps}>
-          {(notice || actionError || loadError) && (
-            <Banner
-              tone={actionError || loadError ? 'error' : 'success'}
-              message={actionError ?? loadError ?? notice ?? ''}
-              onDismiss={() => {
-                setNotice(null);
-                setActionError(null);
-                setLoadError(null);
-              }}
-            />
-          )}
-
           <View style={styles.toolbar}>
             <SearchField
               value={query}
@@ -579,10 +578,7 @@ export default function RoomManagementPage() {
 
           <View onLayout={handleTableLayout}>
             {loading && rooms.length === 0 ? (
-              <View style={styles.loadingBlock}>
-                <ActivityIndicator color={DefaultTheme.colors.primary} />
-                <Text style={styles.loadingText}>Loading rooms…</Text>
-              </View>
+              <SkeletonTable rows={6} columns={columns.length} label="Loading rooms" />
             ) : compact ? (
               <View style={styles.mobileList}>
                 {filtered.length === 0 ? (
@@ -862,36 +858,6 @@ function TenantRow({ tenant, isLast }: { tenant: RoomTenantModel; isLast: boolea
           </Pressable>
         )}
       </View>
-    </View>
-  );
-}
-
-function Banner({
-  tone,
-  message,
-  onDismiss,
-}: {
-  tone: 'success' | 'error';
-  message: string;
-  onDismiss: () => void;
-}) {
-  const error = tone === 'error';
-
-  return (
-    <View style={[styles.banner, error ? styles.bannerError : styles.bannerSuccess]}>
-      <AppIcon
-        name={error ? 'warning' : 'check'}
-        size={15}
-        tintColor={error ? '#C4453B' : DefaultTheme.colors.primary}
-      />
-      <Text style={[styles.bannerText, error && styles.bannerTextError]}>{message}</Text>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Dismiss message"
-        hitSlop={8}
-        onPress={onDismiss}>
-        <AppIcon name="close" size={13} tintColor={DefaultTheme.colors.muted} />
-      </Pressable>
     </View>
   );
 }
@@ -1228,34 +1194,6 @@ const styles = StyleSheet.create({
     fontFamily: DefaultTheme.fonts.bodyMedium,
     fontSize: 10.5,
   },
-  banner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: DefaultTheme.radius.sm,
-    borderWidth: 1,
-  },
-  bannerSuccess: {
-    backgroundColor: DefaultTheme.colors.softOlive,
-    borderColor: 'rgba(138, 153, 0, 0.28)',
-  },
-  bannerError: {
-    backgroundColor: '#FBE7E5',
-    borderColor: 'rgba(196, 69, 59, 0.28)',
-  },
-  bannerText: {
-    flex: 1,
-    color: DefaultTheme.colors.ink,
-    fontFamily: DefaultTheme.fonts.bodyMedium,
-    fontSize: 12.5,
-    lineHeight: 18,
-  },
-  bannerTextError: {
-    color: '#8C2F27',
-  },
   toolbar: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1306,16 +1244,6 @@ const styles = StyleSheet.create({
     backgroundColor: DefaultTheme.colors.cool,
     borderWidth: 1,
     borderColor: DefaultTheme.colors.line,
-  },
-  loadingBlock: {
-    paddingVertical: 34,
-    alignItems: 'center',
-    gap: 10,
-  },
-  loadingText: {
-    color: DefaultTheme.colors.muted,
-    fontFamily: DefaultTheme.fonts.bodyMedium,
-    fontSize: 13,
   },
   roomCell: {
     flexDirection: 'row',

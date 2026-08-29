@@ -2,7 +2,6 @@ import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -13,6 +12,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { PageMeta } from '@/components/common/PageMeta';
+import { Skeleton, SkeletonCardGrid } from '@/components/common/SkeletonLoader';
 import { RoomDetailsModal } from '@/app/landing-page/RoomDetailsModal';
 import { AppIcon } from '@/components/ui/AppIcon';
 import { RoomCard } from '@/components/ui/cards/RoomCard';
@@ -101,6 +102,7 @@ export default function AllRoomsPage() {
 
   return (
     <View style={styles.page}>
+      <PageMeta title="All Rooms" description="Browse every room at Davaine Boarding House with rates and availability." />
       <StatusBar style="dark" />
       <ScrollView
         style={styles.scroll}
@@ -146,10 +148,24 @@ export default function AllRoomsPage() {
           </View>
 
           {loading && rooms.length === 0 ? (
-            <View style={styles.loadingBlock}>
-              <ActivityIndicator color={DefaultTheme.colors.primary} />
-              <Text style={styles.loadingText}>Loading rooms…</Text>
-            </View>
+            roomBuildings.map((building) => (
+              <View key={building} style={styles.group}>
+                <View style={styles.groupHeader}>
+                  <Skeleton width={44} height={44} radius={DefaultTheme.radius.md} />
+                  <View style={styles.groupHeaderText}>
+                    <Skeleton width="46%" height={14} />
+                    <Skeleton width="30%" height={10} style={styles.skeletonCaption} />
+                  </View>
+                </View>
+                <SkeletonCardGrid
+                  count={cardWidth === '100%' ? 2 : 3}
+                  cardWidth={cardWidth}
+                  height={280}
+                  label={`Loading rooms in ${buildingLabel(building)}`}
+                  style={styles.skeletonGrid}
+                />
+              </View>
+            ))
           ) : loadError ? (
             <View style={styles.emptyBlock}>
               <AppIcon name="warning" size={20} tintColor="#C4453B" />
@@ -396,15 +412,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 22,
   },
-  loadingBlock: {
-    marginTop: 40,
-    alignItems: 'center',
-    gap: 10,
+  skeletonGrid: {
+    marginTop: 22,
   },
-  loadingText: {
-    color: DefaultTheme.colors.muted,
-    fontFamily: DefaultTheme.fonts.bodyMedium,
-    fontSize: 13,
+  skeletonCaption: {
+    marginTop: 8,
   },
   emptyBlock: {
     marginTop: 22,

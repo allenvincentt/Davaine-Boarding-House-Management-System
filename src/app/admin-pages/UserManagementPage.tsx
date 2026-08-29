@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Pressable,
   StyleSheet,
   Text,
@@ -11,6 +10,9 @@ import {
   type ViewStyle,
 } from 'react-native';
 
+import { PageMeta } from '@/components/common/PageMeta';
+import { SkeletonKPIRow, SkeletonTable } from '@/components/common/SkeletonLoader';
+import { useSnackbar } from '@/components/common/Snackbar';
 import { MainContentArea } from '@/components/layout/MainContentArea';
 import { AppIcon } from '@/components/ui/AppIcon';
 import { GradientButton } from '@/components/ui/buttons/GradientButton';
@@ -96,9 +98,7 @@ export default function UserManagementPage() {
 
   const [users, setUsers] = useState<AdminUserModel[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
+  const snackbar = useSnackbar();
 
   const [query, setQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('All');
@@ -116,6 +116,7 @@ export default function UserManagementPage() {
   const [pendingDelete, setPendingDelete] = useState<AdminUserModel | null>(null);
 
   const activeRef = useRef(true);
+  const loadRef = useRef<() => void>(() => undefined);
 
   useEffect(() => {
     activeRef.current = true;
@@ -126,7 +127,6 @@ export default function UserManagementPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    setLoadError(null);
     try {
       const rows = await listUsers();
       if (activeRef.current) {
@@ -134,16 +134,20 @@ export default function UserManagementPage() {
       }
     } catch (error) {
       if (activeRef.current) {
-        setLoadError(error instanceof Error ? error.message : 'Unable to load users.');
+        snackbar.error(error instanceof Error ? error.message : 'Unable to load users.', {
+          actionLabel: 'Retry',
+          onAction: () => loadRef.current(),
+        });
       }
     } finally {
       if (activeRef.current) {
         setLoading(false);
       }
     }
-  }, []);
+  }, [snackbar]);
 
   useEffect(() => {
+    loadRef.current = load;
     load();
   }, [load]);
 
@@ -179,8 +183,6 @@ export default function UserManagementPage() {
   }, []);
 
   const openForm = useCallback((mode: FormMode, user: AdminUserModel | null) => {
-    setNotice(null);
-    setActionError(null);
     setFormMode(mode);
     setFormUser(user);
     setFormSession((current) => current + 1);
@@ -210,48 +212,63 @@ export default function UserManagementPage() {
         await load();
       }
 
-      setNotice(
+      snackbar.success(
         result.confirmationEmailSent
           ? `Confirmation email sent to ${draft.email}. ${draft.fullName} can sign in with the temporary password once the email is confirmed.`
           : `${draft.fullName} was created. Email confirmation is disabled for this project, so they can sign in right away.`,
       );
     },
-    [applyUser, load],
+    [applyUser, load, snackbar],
   );
 
   const handleUpdateRole = useCallback(
     async (uuid: string, nextRole: AppUserRole) => {
       const updated = await updateUserRole(uuid, nextRole);
       applyUser(updated);
-      setNotice(`${updated.fullName} is now ${roleLabel(nextRole)}.`);
+      snackbar.success(`${updated.fullName} is now ${roleLabel(nextRole)}.`);
     },
-    [applyUser],
+    [applyUser, snackbar],
   );
 
   const handleDeactivate = useCallback(
     async (user: AdminUserModel) => {
-      setActionError(null);
+      const pending = snackbar.loading(`Deactivating ${user.fullName}…`);
       try {
         const updated = await deactivateUser(user.uuid);
         applyUser(updated);
-        setNotice(`${updated.fullName} was deactivated and moved to the Guest role.`);
+        snackbar.update(pending, {
+          tone: 'success',
+          message: `${updated.fullName} was deactivated and moved to the Guest role.`,
+        });
       } catch (error) {
-        setActionError(error instanceof Error ? error.message : 'The user could not be deactivated.');
+        snackbar.update(pending, {
+          tone: 'error',
+          message: error instanceof Error ? error.message : 'The user could not be deactivated.',
+        });
       }
     },
-    [applyUser],
+    [applyUser, snackbar],
   );
 
-  const handleDelete = useCallback(async (user: AdminUserModel) => {
-    setActionError(null);
-    try {
-      await deleteUser(user.uuid);
-      setUsers((current) => current.filter((item) => item.uuid !== user.uuid));
-      setNotice(`${user.fullName} was permanently deleted.`);
-    } catch (error) {
-      setActionError(error instanceof Error ? error.message : 'The user could not be deleted.');
-    }
-  }, []);
+  const handleDelete = useCallback(
+    async (user: AdminUserModel) => {
+      const pending = snackbar.loading(`Deleting ${user.fullName}…`);
+      try {
+        await deleteUser(user.uuid);
+        setUsers((current) => current.filter((item) => item.uuid !== user.uuid));
+        snackbar.update(pending, {
+          tone: 'success',
+          message: `${user.fullName} was permanently deleted.`,
+        });
+      } catch (error) {
+        snackbar.update(pending, {
+          tone: 'error',
+          message: error instanceof Error ? error.message : 'The user could not be deleted.',
+        });
+      }
+    },
+    [snackbar],
+  );
 
   const actionOptions = useMemo<SelectOption[]>(() => {
     if (!actionsUser) {
@@ -361,6 +378,7 @@ export default function UserManagementPage() {
 
   return (
     <View style={styles.page}>
+      <PageMeta title="User Management" description="Manage administrator and tenant accounts." />
       <MainContentArea {...scrollNavigator.scrollProps}>
         <View style={styles.headerRow}>
           <View style={styles.headerText}>
@@ -382,52 +400,44 @@ export default function UserManagementPage() {
           )}
         </View>
 
-        <KPICardsRow>
-          <KPICard
-            label="Total Users"
-            value={users.length}
-            icon="users"
-            iconColor={DefaultTheme.colors.primary}
-            iconBackground={DefaultTheme.colors.softOlive}
-            accentColor={DefaultTheme.colors.primary}
-            caption="All system accounts"
-            progress={1}
-          />
-          <KPICard
-            label="Active"
-            value={activeCount}
-            icon="check"
-            iconColor={ACTIVE_COLOR}
-            iconBackground="#E4F5EA"
-            accentColor={ACTIVE_COLOR}
-            caption="Email confirmed"
-            progress={users.length === 0 ? 0 : activeCount / users.length}
-          />
-          <KPICard
-            label="Pending"
-            value={pendingCount}
-            icon="email"
-            iconColor={PENDING_COLOR}
-            iconBackground={DefaultTheme.colors.softGold}
-            accentColor={PENDING_COLOR}
-            caption="Awaiting email confirmation"
-            progress={users.length === 0 ? 0 : pendingCount / users.length}
-          />
-        </KPICardsRow>
+        {loading && users.length === 0 ? (
+          <SkeletonKPIRow count={3} label="Loading account figures" />
+        ) : (
+          <KPICardsRow>
+            <KPICard
+              label="Total Users"
+              value={users.length}
+              icon="users"
+              iconColor={DefaultTheme.colors.primary}
+              iconBackground={DefaultTheme.colors.softOlive}
+              accentColor={DefaultTheme.colors.primary}
+              caption="All system accounts"
+              progress={1}
+            />
+            <KPICard
+              label="Active"
+              value={activeCount}
+              icon="check"
+              iconColor={ACTIVE_COLOR}
+              iconBackground="#E4F5EA"
+              accentColor={ACTIVE_COLOR}
+              caption="Email confirmed"
+              progress={users.length === 0 ? 0 : activeCount / users.length}
+            />
+            <KPICard
+              label="Pending"
+              value={pendingCount}
+              icon="email"
+              iconColor={PENDING_COLOR}
+              iconBackground={DefaultTheme.colors.softGold}
+              accentColor={PENDING_COLOR}
+              caption="Awaiting email confirmation"
+              progress={users.length === 0 ? 0 : pendingCount / users.length}
+            />
+          </KPICardsRow>
+        )}
 
         <Card style={styles.tableCard} revealDelay={320} {...scrollNavigator.targetProps}>
-          {(notice || actionError || loadError) && (
-            <Banner
-              tone={actionError || loadError ? 'error' : 'success'}
-              message={actionError ?? loadError ?? notice ?? ''}
-              onDismiss={() => {
-                setNotice(null);
-                setActionError(null);
-                setLoadError(null);
-              }}
-            />
-          )}
-
           <View style={styles.toolbar}>
             <SearchField
               value={query}
@@ -451,10 +461,7 @@ export default function UserManagementPage() {
 
           <View onLayout={handleTableLayout}>
             {loading && users.length === 0 ? (
-              <View style={styles.loadingBlock}>
-                <ActivityIndicator color={DefaultTheme.colors.primary} />
-                <Text style={styles.loadingText}>Loading users…</Text>
-              </View>
+              <SkeletonTable rows={6} columns={columns.length} label="Loading users" />
             ) : compact ? (
               <View style={styles.mobileList}>
                 {filtered.length === 0 ? (
@@ -539,36 +546,6 @@ export default function UserManagementPage() {
         }}
         onClose={() => setPendingDelete(null)}
       />
-    </View>
-  );
-}
-
-function Banner({
-  tone,
-  message,
-  onDismiss,
-}: {
-  tone: 'success' | 'error';
-  message: string;
-  onDismiss: () => void;
-}) {
-  const error = tone === 'error';
-
-  return (
-    <View style={[styles.banner, error ? styles.bannerError : styles.bannerSuccess]}>
-      <AppIcon
-        name={error ? 'warning' : 'check'}
-        size={15}
-        tintColor={error ? '#C4453B' : DefaultTheme.colors.primary}
-      />
-      <Text style={[styles.bannerText, error && styles.bannerTextError]}>{message}</Text>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Dismiss message"
-        hitSlop={8}
-        onPress={onDismiss}>
-        <AppIcon name="close" size={13} tintColor={DefaultTheme.colors.muted} />
-      </Pressable>
     </View>
   );
 }
@@ -1025,34 +1002,6 @@ const styles = StyleSheet.create({
   tableCard: {
     width: '100%',
   },
-  banner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: DefaultTheme.radius.sm,
-    borderWidth: 1,
-  },
-  bannerSuccess: {
-    backgroundColor: DefaultTheme.colors.softOlive,
-    borderColor: 'rgba(138, 153, 0, 0.28)',
-  },
-  bannerError: {
-    backgroundColor: '#FBE7E5',
-    borderColor: 'rgba(196, 69, 59, 0.28)',
-  },
-  bannerText: {
-    flex: 1,
-    color: DefaultTheme.colors.ink,
-    fontFamily: DefaultTheme.fonts.bodyMedium,
-    fontSize: 12.5,
-    lineHeight: 18,
-  },
-  bannerTextError: {
-    color: '#8C2F27',
-  },
   toolbar: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1103,16 +1052,6 @@ const styles = StyleSheet.create({
   },
   chevronOpen: {
     transform: [{ rotate: '180deg' }],
-  },
-  loadingBlock: {
-    paddingVertical: 34,
-    alignItems: 'center',
-    gap: 10,
-  },
-  loadingText: {
-    color: DefaultTheme.colors.muted,
-    fontFamily: DefaultTheme.fonts.bodyMedium,
-    fontSize: 13,
   },
   nameCell: {
     flexDirection: 'row',

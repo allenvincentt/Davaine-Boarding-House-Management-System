@@ -2,7 +2,6 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Animated,
   Easing,
   Linking,
@@ -16,6 +15,9 @@ import {
   type LayoutChangeEvent,
 } from 'react-native';
 
+import { PageMeta } from '@/components/common/PageMeta';
+import { SkeletonCardGrid } from '@/components/common/SkeletonLoader';
+import { useSnackbar } from '@/components/common/Snackbar';
 import { RoomDetailsModal } from '@/app/landing-page/RoomDetailsModal';
 import { NavBar } from '@/components/layout/NavBar';
 import { ScrollReveal } from '@/components/layout/ScrollReveal';
@@ -75,6 +77,7 @@ export default function LandingPage() {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const contentActiveRef = useRef(true);
   const inquiryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const snackbar = useSnackbar();
 
   useEffect(() => {
     contentActiveRef.current = true;
@@ -90,8 +93,12 @@ export default function LandingPage() {
           setSlides(rows.map((slide) => ({ id: slide.id, uri: slide.uri })));
         }
       })
-      .catch(() => undefined);
-  }, []);
+      .catch(() => {
+        if (contentActiveRef.current) {
+          snackbar.warning('Some photos could not be loaded right now.');
+        }
+      });
+  }, [snackbar]);
 
   useEffect(() => {
     listPublicRooms()
@@ -100,13 +107,19 @@ export default function LandingPage() {
           setAvailableRooms(rows.filter((room) => room.available));
         }
       })
-      .catch(() => undefined)
+      .catch((error: unknown) => {
+        if (contentActiveRef.current) {
+          snackbar.error(
+            error instanceof Error ? error.message : 'Unable to load the available rooms.',
+          );
+        }
+      })
       .finally(() => {
         if (contentActiveRef.current) {
           setRoomsLoading(false);
         }
       });
-  }, []);
+  }, [snackbar]);
 
   const openRoomDetails = useCallback((room: PublicRoomModel) => {
     setDetailsRoom(room);
@@ -257,6 +270,11 @@ export default function LandingPage() {
 
   return (
     <View style={styles.page}>
+      <PageMeta
+        exact
+        title="Davaine — Boarding House in Toril, Davao City"
+        description="Davaine Boarding House in Toril, Davao City. Browse rooms, rates, and availability."
+      />
       <StatusBar style="dark" />
       <NavBar activeSection={activeSection} onNavigate={navigateTo} scrollY={scrollY} />
       <ScrollView
@@ -359,10 +377,13 @@ function RoomsSection({
           />
         </ScrollReveal>
         {loading ? (
-          <View style={styles.roomsLoading}>
-            <ActivityIndicator color={DefaultTheme.colors.primary} />
-            <Text style={styles.roomsLoadingText}>Loading available rooms…</Text>
-          </View>
+          <SkeletonCardGrid
+            count={roomWidth === '100%' ? 2 : 3}
+            cardWidth={roomWidth}
+            height={280}
+            label="Loading available rooms"
+            style={styles.roomsSkeleton}
+          />
         ) : rooms.length === 0 ? (
           <View style={styles.roomsEmpty}>
             <AppIcon name="inbox" size={22} tintColor={DefaultTheme.colors.muted} />
@@ -778,7 +799,7 @@ const styles = StyleSheet.create({
   },
   hero: {
     minHeight: 720,
-    paddingTop: 74,
+    paddingTop: 116,
     paddingBottom: 54,
     alignItems: 'center',
     overflow: 'hidden',
@@ -893,15 +914,8 @@ const styles = StyleSheet.create({
     gap: 5,
     paddingLeft: 4,
   },
-  roomsLoading: {
+  roomsSkeleton: {
     marginTop: 62,
-    alignItems: 'center',
-    gap: 10,
-  },
-  roomsLoadingText: {
-    color: DefaultTheme.colors.muted,
-    fontFamily: DefaultTheme.fonts.bodyMedium,
-    fontSize: 13,
   },
   roomsEmpty: {
     marginTop: 62,

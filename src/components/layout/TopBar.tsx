@@ -25,14 +25,6 @@ import { DefaultTheme } from '@/constants/defaultTheme';
 import { GlassMotion } from '@/constants/glassTheme';
 import { useNotifications } from '@/providers/NotificationProvider';
 
-const NEUTRAL_SHADOW = {
-  shadowColor: '#4D4E47',
-  shadowOpacity: 0.08,
-  shadowRadius: 12,
-  shadowOffset: { width: 0, height: 4 },
-  elevation: 4,
-};
-
 type TopBarProps = {
   searchValue: string;
   onSearchChange: (text: string) => void;
@@ -104,20 +96,20 @@ export function TopBar({
         paddingHorizontal: density.interpolate({ inputRange: [0, 1, 2], outputRange: [18, 15, 12] }),
         borderRadius: condenseProgress.interpolate({
           inputRange: [0, 1],
-          outputRange: [DefaultTheme.radius.lg, 34],
+          outputRange: [30, 34],
         }),
       };
 
   return (
     <GlassPanel
-      variant="bar"
+      variant="floating"
       backgroundHint={DefaultTheme.colors.background}
       reflection
       sheen
       wash={compact}
       interaction={interaction}
       reflectionStyle={styles.reflection}
-      style={[styles.root, shape, !compact && NEUTRAL_SHADOW, style]}>
+      style={[styles.root, shape, style]}>
       <Animated.View
         style={[
           styles.search,

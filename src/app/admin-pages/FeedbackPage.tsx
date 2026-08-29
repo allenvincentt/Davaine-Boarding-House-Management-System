@@ -1,7 +1,6 @@
 import { useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Pressable,
   StyleSheet,
   Text,
@@ -12,6 +11,9 @@ import {
   type ViewStyle,
 } from 'react-native';
 
+import { PageMeta } from '@/components/common/PageMeta';
+import { SkeletonKPIRow, SkeletonTable } from '@/components/common/SkeletonLoader';
+import { useSnackbar } from '@/components/common/Snackbar';
 import { MainContentArea } from '@/components/layout/MainContentArea';
 import { AppIcon } from '@/components/ui/AppIcon';
 import { PageFabStack, usePageScrollNavigator } from '@/components/ui/buttons/PageFabStack';
@@ -75,9 +77,7 @@ export default function FeedbackPage() {
   const [reviews, setReviews] = useState<RoomReviewModel[]>([]);
   const [rooms, setRooms] = useState<RoomModel[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
+  const snackbar = useSnackbar();
 
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('All');
@@ -91,6 +91,7 @@ export default function FeedbackPage() {
   const [highlightId, setHighlightId] = useState<string | null>(null);
 
   const activeRef = useRef(true);
+  const loadRef = useRef<() => void>(() => undefined);
 
   useEffect(() => {
     activeRef.current = true;
@@ -117,7 +118,6 @@ export default function FeedbackPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    setLoadError(null);
     try {
       const [reviewRows, roomRows] = await Promise.all([listRoomReviews(), listRooms()]);
       if (activeRef.current) {
@@ -126,16 +126,20 @@ export default function FeedbackPage() {
       }
     } catch (error) {
       if (activeRef.current) {
-        setLoadError(error instanceof Error ? error.message : 'Unable to load feedback.');
+        snackbar.error(error instanceof Error ? error.message : 'Unable to load feedback.', {
+          actionLabel: 'Retry',
+          onAction: () => loadRef.current(),
+        });
       }
     } finally {
       if (activeRef.current) {
         setLoading(false);
       }
     }
-  }, []);
+  }, [snackbar]);
 
   useEffect(() => {
+    loadRef.current = load;
     load();
   }, [load]);
 
@@ -183,38 +187,44 @@ export default function FeedbackPage() {
 
   const handleStatusChange = useCallback(
     async (review: RoomReviewModel, status: ReviewStatus) => {
-      setNotice(null);
-      setActionError(null);
+      const pending = snackbar.loading(`Marking the review ${status}…`);
       try {
         const updated = await updateReviewStatus(review.id, status);
         setReviews((current) =>
           current.map((item) => (item.id === updated.id ? updated : item)),
         );
-        setNotice(`The review for ${tagOf(review.roomId).label} was marked ${status}.`);
+        snackbar.update(pending, {
+          tone: 'success',
+          message: `The review for ${tagOf(review.roomId).label} was marked ${status}.`,
+        });
       } catch (error) {
-        setActionError(
-          error instanceof Error ? error.message : 'The review could not be updated.',
-        );
+        snackbar.update(pending, {
+          tone: 'error',
+          message: error instanceof Error ? error.message : 'The review could not be updated.',
+        });
       }
     },
-    [tagOf],
+    [tagOf, snackbar],
   );
 
   const handleDeleteReview = useCallback(
     async (review: RoomReviewModel) => {
-      setNotice(null);
-      setActionError(null);
+      const pending = snackbar.loading('Deleting the review…');
       try {
         await deleteReview(review.id);
         setReviews((current) => current.filter((item) => item.id !== review.id));
-        setNotice(`The review for ${tagOf(review.roomId).label} was deleted.`);
+        snackbar.update(pending, {
+          tone: 'success',
+          message: `The review for ${tagOf(review.roomId).label} was deleted.`,
+        });
       } catch (error) {
-        setActionError(
-          error instanceof Error ? error.message : 'The review could not be deleted.',
-        );
+        snackbar.update(pending, {
+          tone: 'error',
+          message: error instanceof Error ? error.message : 'The review could not be deleted.',
+        });
       }
     },
-    [tagOf],
+    [tagOf, snackbar],
   );
 
   const actionOptions = useMemo<SelectOption[]>(() => {
@@ -308,6 +318,7 @@ export default function FeedbackPage() {
 
   return (
     <View style={styles.page}>
+      <PageMeta title="Feedback" description="Moderate tenant and visitor reviews of Davaine." />
       <MainContentArea {...scrollNavigator.scrollProps}>
         <View style={styles.headerRow}>
           <View style={styles.headerText}>
@@ -320,62 +331,54 @@ export default function FeedbackPage() {
           </View>
         </View>
 
-        <KPICardsRow>
-          <KPICard
-            label="Average Rating"
-            value={ratingLabelOf(summary.average)}
-            icon="chart"
-            iconColor="#C98A1E"
-            iconBackground={DefaultTheme.colors.softGold}
-            accentColor="#C98A1E"
-            caption={starRow(summary.average)}
-            progress={summary.average / 5}
-          />
-          <KPICard
-            label="Total Responses"
-            value={summary.total}
-            icon="feedback"
-            iconColor={DefaultTheme.colors.primary}
-            iconBackground={DefaultTheme.colors.softOlive}
-            accentColor={DefaultTheme.colors.primary}
-            caption="All submitted reviews"
-            progress={1}
-          />
-          <KPICard
-            label="Total Positive Rating"
-            value={summary.positive}
-            icon="trendUp"
-            iconColor={POSITIVE_COLOR}
-            iconBackground="#E4F5EA"
-            accentColor={POSITIVE_COLOR}
-            caption="4 and 5 star reviews"
-            progress={summary.total === 0 ? 0 : summary.positive / summary.total}
-          />
-          <KPICard
-            label="Total Negative Rating"
-            value={summary.negative}
-            icon="trendDown"
-            iconColor={NEGATIVE_COLOR}
-            iconBackground="#FBE7E5"
-            accentColor={NEGATIVE_COLOR}
-            caption="1 and 2 star reviews"
-            progress={summary.total === 0 ? 0 : summary.negative / summary.total}
-          />
-        </KPICardsRow>
+        {loading && reviews.length === 0 ? (
+          <SkeletonKPIRow count={4} label="Loading feedback figures" />
+        ) : (
+          <KPICardsRow>
+            <KPICard
+              label="Average Rating"
+              value={ratingLabelOf(summary.average)}
+              icon="chart"
+              iconColor="#C98A1E"
+              iconBackground={DefaultTheme.colors.softGold}
+              accentColor="#C98A1E"
+              caption={starRow(summary.average)}
+              progress={summary.average / 5}
+            />
+            <KPICard
+              label="Total Responses"
+              value={summary.total}
+              icon="feedback"
+              iconColor={DefaultTheme.colors.primary}
+              iconBackground={DefaultTheme.colors.softOlive}
+              accentColor={DefaultTheme.colors.primary}
+              caption="All submitted reviews"
+              progress={1}
+            />
+            <KPICard
+              label="Total Positive Rating"
+              value={summary.positive}
+              icon="trendUp"
+              iconColor={POSITIVE_COLOR}
+              iconBackground="#E4F5EA"
+              accentColor={POSITIVE_COLOR}
+              caption="4 and 5 star reviews"
+              progress={summary.total === 0 ? 0 : summary.positive / summary.total}
+            />
+            <KPICard
+              label="Total Negative Rating"
+              value={summary.negative}
+              icon="trendDown"
+              iconColor={NEGATIVE_COLOR}
+              iconBackground="#FBE7E5"
+              accentColor={NEGATIVE_COLOR}
+              caption="1 and 2 star reviews"
+              progress={summary.total === 0 ? 0 : summary.negative / summary.total}
+            />
+          </KPICardsRow>
+        )}
 
         <Card style={styles.tableCard} revealDelay={320} {...scrollNavigator.targetProps}>
-          {(notice || actionError || loadError) && (
-            <Banner
-              tone={actionError || loadError ? 'error' : 'success'}
-              message={actionError ?? loadError ?? notice ?? ''}
-              onDismiss={() => {
-                setNotice(null);
-                setActionError(null);
-                setLoadError(null);
-              }}
-            />
-          )}
-
           <View style={styles.toolbar}>
             <SearchField
               value={query}
@@ -399,10 +402,7 @@ export default function FeedbackPage() {
 
           <View onLayout={handleTableLayout}>
             {loading && reviews.length === 0 ? (
-              <View style={styles.loadingBlock}>
-                <ActivityIndicator color={DefaultTheme.colors.primary} />
-                <Text style={styles.loadingText}>Loading feedback…</Text>
-              </View>
+              <SkeletonTable rows={6} columns={columns.length} label="Loading feedback" />
             ) : compact ? (
               <View style={styles.mobileList}>
                 {filtered.length === 0 ? (
@@ -657,36 +657,6 @@ function ReviewListItem({
   );
 }
 
-function Banner({
-  tone,
-  message,
-  onDismiss,
-}: {
-  tone: 'success' | 'error';
-  message: string;
-  onDismiss: () => void;
-}) {
-  const error = tone === 'error';
-
-  return (
-    <View style={[styles.banner, error ? styles.bannerError : styles.bannerSuccess]}>
-      <AppIcon
-        name={error ? 'warning' : 'check'}
-        size={15}
-        tintColor={error ? '#C4453B' : DefaultTheme.colors.primary}
-      />
-      <Text style={[styles.bannerText, error && styles.bannerTextError]}>{message}</Text>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Dismiss message"
-        hitSlop={8}
-        onPress={onDismiss}>
-        <AppIcon name="close" size={13} tintColor={DefaultTheme.colors.muted} />
-      </Pressable>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   page: {
     flex: 1,
@@ -715,34 +685,6 @@ const styles = StyleSheet.create({
   },
   tableCard: {
     width: '100%',
-  },
-  banner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: DefaultTheme.radius.sm,
-    borderWidth: 1,
-  },
-  bannerSuccess: {
-    backgroundColor: DefaultTheme.colors.softOlive,
-    borderColor: 'rgba(138, 153, 0, 0.28)',
-  },
-  bannerError: {
-    backgroundColor: '#FBE7E5',
-    borderColor: 'rgba(196, 69, 59, 0.28)',
-  },
-  bannerText: {
-    flex: 1,
-    color: DefaultTheme.colors.ink,
-    fontFamily: DefaultTheme.fonts.bodyMedium,
-    fontSize: 12.5,
-    lineHeight: 18,
-  },
-  bannerTextError: {
-    color: '#8C2F27',
   },
   toolbar: {
     flexDirection: 'row',
@@ -794,16 +736,6 @@ const styles = StyleSheet.create({
   },
   chevronOpen: {
     transform: [{ rotate: '180deg' }],
-  },
-  loadingBlock: {
-    paddingVertical: 34,
-    alignItems: 'center',
-    gap: 10,
-  },
-  loadingText: {
-    color: DefaultTheme.colors.muted,
-    fontFamily: DefaultTheme.fonts.bodyMedium,
-    fontSize: 13,
   },
   dateCell: {
     gap: 5,

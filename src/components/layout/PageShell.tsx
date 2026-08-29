@@ -4,6 +4,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type React
 import { Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useSnackbar } from '@/components/common/Snackbar';
 import { PageRefreshProvider, type PageRefreshValue } from '@/components/layout/PageRefreshContext';
 import { SideBar } from '@/components/layout/SideBar';
 import { TopBar } from '@/components/layout/TopBar';
@@ -34,6 +35,7 @@ export function PageShell({ children }: PageShellProps) {
   const router = useRouter();
   const pathname = usePathname();
   const { profile, signOut } = useAuth();
+  const snackbar = useSnackbar();
   const compact = width < DefaultTheme.layout.compactNavigation;
   const [collapsed, setCollapsed] = useState(false);
   const [search, setSearch] = useState('');
@@ -99,8 +101,17 @@ export function PageShell({ children }: PageShellProps) {
   };
 
   const handleSignOut = async () => {
-    await signOut();
-    router.replace('/');
+    const pending = snackbar.loading('Signing you out…');
+    try {
+      await signOut();
+      router.replace('/');
+      snackbar.update(pending, { tone: 'success', message: 'You have been signed out.' });
+    } catch (error) {
+      snackbar.update(pending, {
+        tone: 'error',
+        message: error instanceof Error ? error.message : 'Sign out failed. Please try again.',
+      });
+    }
   };
 
   const signOutDialog = (
@@ -121,8 +132,11 @@ export function PageShell({ children }: PageShellProps) {
       <View style={styles.page}>
         <StatusBar style="dark" />
         <View style={styles.mobileColumn}>
+          <PageRefreshProvider value={refreshValue}>
+            <Fragment key={contentKey}>{children}</Fragment>
+          </PageRefreshProvider>
           <TopBar
-            style={[styles.topBar, { marginTop: safeAreaTop + 12 }]}
+            style={[styles.topBarFloating, { top: safeAreaTop + 12 }]}
             searchValue={search}
             onSearchChange={setSearch}
             adminName={adminName}
@@ -130,9 +144,6 @@ export function PageShell({ children }: PageShellProps) {
             onProfilePress={handleOpenProfile}
             onSignOut={() => setSignOutOpen(true)}
           />
-          <PageRefreshProvider value={refreshValue}>
-            <Fragment key={contentKey}>{children}</Fragment>
-          </PageRefreshProvider>
         </View>
         <SideBar
           activeSection={activeSection}
@@ -162,8 +173,9 @@ export function PageShell({ children }: PageShellProps) {
           onSignOut={() => setSignOutOpen(true)}
         />
         <View style={styles.contentColumn}>
+          {children}
           <TopBar
-            style={styles.topBar}
+            style={[styles.topBarFloating, styles.topBarFloatingDesktop]}
             searchValue={search}
             onSearchChange={setSearch}
             adminName={adminName}
@@ -171,7 +183,6 @@ export function PageShell({ children }: PageShellProps) {
             onProfilePress={handleOpenProfile}
             onSignOut={() => setSignOutOpen(true)}
           />
-          {children}
         </View>
       </View>
       <UserProfileModal
@@ -200,8 +211,13 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
-  topBar: {
-    marginHorizontal: 20,
-    marginBottom: 4,
+  topBarFloating: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    zIndex: 50,
+  },
+  topBarFloatingDesktop: {
+    top: 14,
   },
 });

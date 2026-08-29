@@ -1,9 +1,10 @@
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Modal as RNModal, Platform, Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
+import { ActivityIndicator, Modal as RNModal, Platform, Pressable, StyleSheet, Text, useWindowDimensions, View, type ViewStyle } from 'react-native';
 
 import { SplashScreen } from '@/components/common/SplashScreen';
+import { useSnackbar } from '@/components/common/Snackbar';
 import { AppIcon } from '@/components/ui/AppIcon';
 import { Input } from '@/components/ui/Input';
 import { GlowingButton } from '@/components/ui/buttons/GlowingButton';
@@ -41,6 +42,9 @@ export function SignInModal({
   onGuestSignIn,
 }: SignInModalProps) {
   const router = useRouter();
+  const snackbar = useSnackbar();
+  const { width: windowWidth } = useWindowDimensions();
+  const isMobile = windowWidth < 768;
   const { biometricKind, biometricAvailable, biometricSignInEnabled } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -63,6 +67,8 @@ export function SignInModal({
 
   const handleSignedIn = useCallback(
     (profile: AdminUserModel) => {
+      snackbar.success(`Welcome back, ${profile.fullName.split(' ')[0]}.`);
+
       if (isGuestRole(profile.userRole)) {
         onClose();
         resetForm();
@@ -72,7 +78,7 @@ export function SignInModal({
       }
       router.replace('/admin-pages/DashboardPage');
     },
-    [router, onClose, resetForm],
+    [router, onClose, resetForm, snackbar],
   );
 
   const { status, errorMessage, submit, submitBiometric, reset } = useSignInFlow(handleSignedIn);
@@ -161,8 +167,9 @@ export function SignInModal({
         visible={visible && status !== 'success'}
         onClose={handleClose}
         dismissOnBackdropPress={!isSubmitting}
+        sheetHandleFloating
         contentStyle={styles.modalContent}>
-        <View style={styles.hero}>
+        <View style={[styles.hero, isMobile && styles.heroMobile]}>
           <View
             pointerEvents="none"
             style={[styles.heroGradient, Platform.OS === 'web' && webHeroGradient]}
@@ -185,7 +192,7 @@ export function SignInModal({
           </View>
         </View>
 
-        <View style={styles.sheet}>
+        <View style={[styles.sheet, isMobile && styles.sheetMobile]}>
           <Text style={styles.title}>Welcome Back</Text>
           <Text style={styles.subtitle}>Sign in to manage your stay at Davaine</Text>
 
@@ -285,6 +292,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  heroMobile: {
+    height: 260,
+  },
   heroGradient: {
     ...StyleSheet.absoluteFill,
     experimental_backgroundImage: Gradient.base,
@@ -320,6 +330,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 26,
     paddingTop: 40,
     paddingBottom: 48,
+  },
+  sheetMobile: {
+    paddingTop: 52,
+    paddingBottom: 72,
   },
   title: {
     color: DefaultTheme.colors.ink,

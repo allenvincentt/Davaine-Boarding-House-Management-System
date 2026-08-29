@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Image,
   Pressable,
   StyleSheet,
@@ -10,6 +9,9 @@ import {
   useWindowDimensions,
 } from 'react-native';
 
+import { PageMeta } from '@/components/common/PageMeta';
+import { Skeleton, SkeletonGallery, SkeletonText } from '@/components/common/SkeletonLoader';
+import { useSnackbar } from '@/components/common/Snackbar';
 import { MainContentArea } from '@/components/layout/MainContentArea';
 import { AppIcon } from '@/components/ui/AppIcon';
 import { MatchaButton } from '@/components/ui/buttons/MatchaButton';
@@ -86,8 +88,7 @@ export default function ContentPage() {
 
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
+  const snackbar = useSnackbar();
   const [pendingRemoval, setPendingRemoval] = useState<PendingRemoval | null>(null);
 
   const [capacity, setCapacity] = useState('');
@@ -97,6 +98,7 @@ export default function ContentPage() {
 
   const activeRef = useRef(true);
   const keySequence = useRef(0);
+  const loadRef = useRef<() => void>(() => undefined);
 
   const nextKey = useCallback(() => {
     keySequence.current += 1;
@@ -112,7 +114,6 @@ export default function ContentPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    setActionError(null);
     try {
       const [roomRows, slideRows, contentRows] = await Promise.all([
         listRooms(),
@@ -138,16 +139,20 @@ export default function ContentPage() {
       setSelectedRoomId((current) => current ?? sorted[0]?.id ?? null);
     } catch (error) {
       if (activeRef.current) {
-        setActionError(error instanceof Error ? error.message : 'Unable to load website content.');
+        snackbar.error(
+          error instanceof Error ? error.message : 'Unable to load website content.',
+          { actionLabel: 'Retry', onAction: () => loadRef.current() },
+        );
       }
     } finally {
       if (activeRef.current) {
         setLoading(false);
       }
     }
-  }, []);
+  }, [snackbar]);
 
   useEffect(() => {
+    loadRef.current = load;
     load();
   }, [load]);
 
@@ -191,25 +196,28 @@ export default function ContentPage() {
   const cover =
     photoDraft.find((item) => item.key === coverKey) ?? photoDraft[0] ?? null;
 
-  const run = useCallback(async (action: () => Promise<string>) => {
-    setBusy(true);
-    setActionError(null);
-    setNotice(null);
-    try {
-      const message = await action();
-      if (activeRef.current) {
-        setNotice(message);
+  const run = useCallback(
+    async (action: () => Promise<string>) => {
+      setBusy(true);
+      try {
+        const message = await action();
+        if (activeRef.current) {
+          snackbar.success(message);
+        }
+      } catch (error) {
+        if (activeRef.current) {
+          snackbar.error(
+            error instanceof Error ? error.message : 'That change could not be saved.',
+          );
+        }
+      } finally {
+        if (activeRef.current) {
+          setBusy(false);
+        }
       }
-    } catch (error) {
-      if (activeRef.current) {
-        setActionError(error instanceof Error ? error.message : 'That change could not be saved.');
-      }
-    } finally {
-      if (activeRef.current) {
-        setBusy(false);
-      }
-    }
-  }, []);
+    },
+    [snackbar],
+  );
 
   const handleAddSlide = useCallback(() => {
     run(async () => {
@@ -251,9 +259,8 @@ export default function ContentPage() {
 
   const handleDiscardCarousel = useCallback(() => {
     setCarouselDraft(slides.map(toDraft));
-    setNotice(null);
-    setActionError(null);
-  }, [slides]);
+    snackbar.info('Unsaved carousel changes were discarded.');
+  }, [slides, snackbar]);
 
   const applyContent = useCallback((next: RoomContentModel) => {
     setContent((current) => ({ ...current, [next.roomId]: next }));
@@ -323,6 +330,7 @@ export default function ContentPage() {
 
   return (
     <View style={styles.page}>
+      <PageMeta title="Content" description="Manage the photos and copy shown on the public landing page." />
       <MainContentArea {...scrollNavigator.scrollProps}>
         <View style={styles.headerRow}>
           <View style={styles.headerText}>
@@ -334,17 +342,6 @@ export default function ContentPage() {
             </Text>
           </View>
         </View>
-
-        {(notice || actionError) && (
-          <Banner
-            tone={actionError ? 'error' : 'success'}
-            message={actionError ?? notice ?? ''}
-            onDismiss={() => {
-              setNotice(null);
-              setActionError(null);
-            }}
-          />
-        )}
 
         <Card
           title="Landing Carousel"
@@ -363,7 +360,12 @@ export default function ContentPage() {
             ) : undefined
           }>
           {loading && carouselDraft.length === 0 ? (
-            <LoadingBlock label="Loading carousel photos…" />
+            <SkeletonGallery
+              count={4}
+              tileWidth={148}
+              tileHeight={108}
+              label="Loading carousel photos"
+            />
           ) : carouselDraft.length === 0 ? (
             <EmptyBlock text="No carousel photos yet. Upload one to fill the home section." />
           ) : (
@@ -489,7 +491,20 @@ export default function ContentPage() {
           </View>
 
           {loading && !selectedContent ? (
-            <LoadingBlock label="Loading room photos…" />
+            <View style={styles.roomEditor}>
+              <View style={styles.coverRow}>
+                <Skeleton width={196} height={132} radius={DefaultTheme.radius.md} />
+                <View style={styles.photoSkeletonColumn}>
+                  <SkeletonText lines={3} lineHeight={10} gap={9} lastLineWidth="54%" />
+                </View>
+              </View>
+              <SkeletonGallery
+                count={4}
+                tileWidth={148}
+                tileHeight={108}
+                label="Loading room photos"
+              />
+            </View>
           ) : !selectedRoom || !selectedContent ? (
             <EmptyBlock text="Pick a room to manage its photos." />
           ) : (
@@ -719,50 +734,11 @@ function TileButton({
   );
 }
 
-function LoadingBlock({ label }: { label: string }) {
-  return (
-    <View style={styles.loadingBlock}>
-      <ActivityIndicator color={DefaultTheme.colors.primary} />
-      <Text style={styles.loadingText}>{label}</Text>
-    </View>
-  );
-}
-
 function EmptyBlock({ text }: { text: string }) {
   return (
     <View style={styles.emptyBlock}>
       <AppIcon name="inbox" size={20} tintColor={DefaultTheme.colors.muted} />
       <Text style={styles.emptyText}>{text}</Text>
-    </View>
-  );
-}
-
-function Banner({
-  tone,
-  message,
-  onDismiss,
-}: {
-  tone: 'success' | 'error';
-  message: string;
-  onDismiss: () => void;
-}) {
-  const error = tone === 'error';
-
-  return (
-    <View style={[styles.banner, error ? styles.bannerError : styles.bannerSuccess]}>
-      <AppIcon
-        name={error ? 'warning' : 'check'}
-        size={15}
-        tintColor={error ? '#C4453B' : DefaultTheme.colors.primary}
-      />
-      <Text style={[styles.bannerText, error && styles.bannerTextError]}>{message}</Text>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Dismiss message"
-        hitSlop={8}
-        onPress={onDismiss}>
-        <AppIcon name="close" size={13} tintColor={DefaultTheme.colors.muted} />
-      </Pressable>
     </View>
   );
 }
@@ -943,6 +919,12 @@ const styles = StyleSheet.create({
     marginTop: 18,
     gap: 18,
   },
+  photoSkeletonColumn: {
+    flexGrow: 1,
+    flexBasis: 220,
+    minWidth: 180,
+    justifyContent: 'center',
+  },
   coverRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1082,16 +1064,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
-  loadingBlock: {
-    paddingVertical: 30,
-    alignItems: 'center',
-    gap: 10,
-  },
-  loadingText: {
-    color: DefaultTheme.colors.muted,
-    fontFamily: DefaultTheme.fonts.bodyMedium,
-    fontSize: 13,
-  },
   emptyBlock: {
     alignItems: 'center',
     gap: 8,
@@ -1107,32 +1079,5 @@ const styles = StyleSheet.create({
     color: DefaultTheme.colors.muted,
     fontFamily: DefaultTheme.fonts.bodyMedium,
     fontSize: 12.5,
-  },
-  banner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: DefaultTheme.radius.sm,
-    borderWidth: 1,
-  },
-  bannerSuccess: {
-    backgroundColor: DefaultTheme.colors.softOlive,
-    borderColor: 'rgba(138, 153, 0, 0.28)',
-  },
-  bannerError: {
-    backgroundColor: '#FBE7E5',
-    borderColor: 'rgba(196, 69, 59, 0.28)',
-  },
-  bannerText: {
-    flex: 1,
-    color: DefaultTheme.colors.ink,
-    fontFamily: DefaultTheme.fonts.bodyMedium,
-    fontSize: 12.5,
-    lineHeight: 18,
-  },
-  bannerTextError: {
-    color: '#8C2F27',
   },
 });

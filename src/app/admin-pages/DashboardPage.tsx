@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View, type StyleProp, type TextStyle } from 'react-native';
 
+import { PageMeta } from '@/components/common/PageMeta';
 import { MainContentArea } from '@/components/layout/MainContentArea';
 import { Card } from '@/components/ui/cards/Card';
 import { KPICard, KPICardsRow } from '@/components/ui/cards/KPICards';
@@ -155,6 +156,7 @@ export default function DashboardPage() {
 
   return (
     <MainContentArea>
+      <PageMeta title="Dashboard" description="Occupancy, collections, and activity across Davaine." />
       <View style={styles.greetingRow}>
         <View>
           <Text style={styles.greetingTitle}>

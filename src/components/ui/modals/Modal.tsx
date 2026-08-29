@@ -14,6 +14,7 @@ import {
   Animated,
   Easing,
   KeyboardAvoidingView,
+  PanResponder,
   Platform,
   Pressable,
   Modal as RNModal,
@@ -26,6 +27,7 @@ import {
   type StyleProp,
   type ViewStyle,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppIcon } from "@/components/ui/AppIcon";
 import { MatchaButton } from "@/components/ui/buttons/MatchaButton";
@@ -40,6 +42,8 @@ type ModalProps = {
   children: ReactNode;
   contentStyle?: StyleProp<ViewStyle>;
   dismissOnBackdropPress?: boolean;
+  sheetOnMobile?: boolean;
+  sheetHandleFloating?: boolean;
 };
 
 type FocusedFieldTarget =
@@ -75,14 +79,30 @@ const OPEN_DURATION = 240;
 const CLOSE_DURATION = 180;
 const RESIZE_DURATION = 220;
 
+const SHEET_BREAKPOINT = 768;
+const SHEET_TOP_GAP = 12;
+const SHEET_SLIDE_DISTANCE = 72;
+const SHEET_DISMISS_DISTANCE = 110;
+const SHEET_DISMISS_VELOCITY = 0.7;
+
+const sheetHandleGripWeb = (
+  Platform.OS === "web"
+    ? { touchAction: "none", userSelect: "none", cursor: "grab" }
+    : null
+) as StyleProp<ViewStyle>;
+
 export function Modal({
   visible,
   onClose,
   children,
   contentStyle,
   dismissOnBackdropPress = true,
+  sheetOnMobile = true,
+  sheetHandleFloating = false,
 }: ModalProps) {
   const blurTarget = useBlurTarget();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const { top: safeAreaTop, bottom: safeAreaBottom } = useSafeAreaInsets();
   const [mounted, setMounted] = useState(false);
   const [resizing, setResizing] = useState(false);
   const hasMeasuredHeight = useRef(false);
@@ -93,6 +113,7 @@ export function Modal({
   const contentScale = useRef(new Animated.Value(0.94)).current;
   const contentTranslateY = useRef(new Animated.Value(18)).current;
   const contentHeight = useRef(new Animated.Value(0)).current;
+  const sheetDragY = useRef(new Animated.Value(0)).current;
 
   const scrollViewRef = useRef<ScrollView>(null);
   const lastFocusedFieldRef = useRef<FocusedFieldTarget | null>(null);
@@ -162,6 +183,7 @@ export function Modal({
       hasMeasuredHeight.current = false;
       setResizing(false);
       setMounted(true);
+      sheetDragY.setValue(0);
       backdropOpacity.setValue(1);
       contentOpacity.setValue(0);
       contentScale.setValue(0.94);
@@ -242,6 +264,68 @@ export function Modal({
     contentTranslateY,
   ]);
 
+  const asSheet = sheetOnMobile && windowWidth < SHEET_BREAKPOINT;
+
+  const sheetTranslateY = useMemo(
+    () =>
+      Animated.add(
+        contentTranslateY.interpolate({
+          inputRange: [0, 18],
+          outputRange: [0, SHEET_SLIDE_DISTANCE],
+        }),
+        sheetDragY,
+      ),
+    [contentTranslateY, sheetDragY],
+  );
+
+  const sheetPanResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onStartShouldSetPanResponderCapture: () => true,
+        onMoveShouldSetPanResponder: (_event, gesture) =>
+          Math.abs(gesture.dy) > 2 && Math.abs(gesture.dy) >= Math.abs(gesture.dx),
+        onMoveShouldSetPanResponderCapture: (_event, gesture) =>
+          Math.abs(gesture.dy) > 2 && Math.abs(gesture.dy) >= Math.abs(gesture.dx),
+        onPanResponderTerminationRequest: () => false,
+        onPanResponderGrant: () => {
+          sheetDragY.setValue(0);
+        },
+        onPanResponderMove: (_event, gesture) => {
+          sheetDragY.setValue(Math.max(0, gesture.dy));
+        },
+        onPanResponderRelease: (_event, gesture) => {
+          if (
+            gesture.dy > SHEET_DISMISS_DISTANCE ||
+            gesture.vy > SHEET_DISMISS_VELOCITY
+          ) {
+            Animated.timing(sheetDragY, {
+              toValue: windowHeight,
+              duration: 180,
+              easing: Easing.in(Easing.cubic),
+              useNativeDriver: false,
+            }).start(onClose);
+            return;
+          }
+          Animated.spring(sheetDragY, {
+            toValue: 0,
+            bounciness: 2,
+            speed: 16,
+            useNativeDriver: false,
+          }).start();
+        },
+        onPanResponderTerminate: () => {
+          Animated.spring(sheetDragY, {
+            toValue: 0,
+            bounciness: 2,
+            speed: 16,
+            useNativeDriver: false,
+          }).start();
+        },
+      }),
+    [sheetDragY, windowHeight, onClose],
+  );
+
   const handleContentLayout = (event: LayoutChangeEvent) => {
     const nextHeight = event.nativeEvent.layout.height;
 
@@ -291,32 +375,25 @@ export function Modal({
             }
           />
         </Animated.View>
-        <KeyboardAvoidingView
-          style={styles.keyboardAvoider}
-          pointerEvents="box-none"
-          behavior={
-            Platform.OS === "ios"
-              ? "padding"
-              : Platform.OS === "android"
-                ? "height"
-                : undefined
-          }
-          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : undefined}
-        >
-          <ScrollView
-            ref={scrollViewRef}
-            style={styles.keyboardAvoider}
-            contentContainerStyle={[
-              styles.scrollContent,
-              webKeyboardInset > 0 ? { paddingBottom: webKeyboardInset } : null,
+        {asSheet ? (
+          <KeyboardAvoidingView
+            style={[
+              styles.sheetAvoider,
+              { paddingTop: safeAreaTop + SHEET_TOP_GAP },
             ]}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="on-drag"
-            showsVerticalScrollIndicator={false}
+            pointerEvents="box-none"
+            behavior={
+              Platform.OS === "ios"
+                ? "padding"
+                : Platform.OS === "android"
+                  ? "height"
+                  : undefined
+            }
+            keyboardVerticalOffset={Platform.OS === "ios" ? 0 : undefined}
           >
             {dismissOnBackdropPress && (
               <Pressable
-                style={styles.dismissLayer}
+                style={StyleSheet.absoluteFill}
                 accessibilityRole="button"
                 accessibilityLabel="Close"
                 onPress={onClose}
@@ -324,26 +401,115 @@ export function Modal({
             )}
             <Animated.View
               style={[
-                styles.contentShell,
+                styles.sheetShell,
                 contentStyle,
-                resizing ? { height: contentHeight } : null,
+                styles.sheetShellOverride,
                 {
                   opacity: contentOpacity,
-                  transform: [
-                    { translateY: contentTranslateY },
-                    { scale: contentScale },
-                  ],
+                  transform: [{ translateY: sheetTranslateY }],
                 },
               ]}
             >
-              <View onLayout={handleContentLayout} style={styles.contentInner}>
-                <ModalKeyboardContext.Provider value={keyboardContextValue}>
-                  {children}
-                </ModalKeyboardContext.Provider>
+              <View
+                pointerEvents="box-none"
+                style={
+                  sheetHandleFloating
+                    ? styles.sheetHandleFloating
+                    : styles.sheetHandleArea
+                }
+              >
+                <View
+                  style={[styles.sheetHandleGrip, sheetHandleGripWeb]}
+                  accessibilityRole="adjustable"
+                  accessibilityLabel="Drag to dismiss"
+                  {...sheetPanResponder.panHandlers}
+                >
+                  <View
+                    pointerEvents="none"
+                    style={[
+                      styles.sheetHandle,
+                      sheetHandleFloating && styles.sheetHandleOnColor,
+                    ]}
+                  />
+                </View>
               </View>
+              <ScrollView
+                ref={scrollViewRef}
+                style={styles.sheetScroll}
+                contentContainerStyle={[
+                  { paddingBottom: safeAreaBottom },
+                  webKeyboardInset > 0
+                    ? { paddingBottom: safeAreaBottom + webKeyboardInset }
+                    : null,
+                ]}
+                bounces={false}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="on-drag"
+                showsVerticalScrollIndicator={false}
+              >
+                <View style={styles.contentInner}>
+                  <ModalKeyboardContext.Provider value={keyboardContextValue}>
+                    {children}
+                  </ModalKeyboardContext.Provider>
+                </View>
+              </ScrollView>
             </Animated.View>
-          </ScrollView>
-        </KeyboardAvoidingView>
+          </KeyboardAvoidingView>
+        ) : (
+          <KeyboardAvoidingView
+            style={styles.keyboardAvoider}
+            pointerEvents="box-none"
+            behavior={
+              Platform.OS === "ios"
+                ? "padding"
+                : Platform.OS === "android"
+                  ? "height"
+                  : undefined
+            }
+            keyboardVerticalOffset={Platform.OS === "ios" ? 0 : undefined}
+          >
+            <ScrollView
+              ref={scrollViewRef}
+              style={styles.keyboardAvoider}
+              contentContainerStyle={[
+                styles.scrollContent,
+                webKeyboardInset > 0 ? { paddingBottom: webKeyboardInset } : null,
+              ]}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+              showsVerticalScrollIndicator={false}
+            >
+              {dismissOnBackdropPress && (
+                <Pressable
+                  style={styles.dismissLayer}
+                  accessibilityRole="button"
+                  accessibilityLabel="Close"
+                  onPress={onClose}
+                />
+              )}
+              <Animated.View
+                style={[
+                  styles.contentShell,
+                  contentStyle,
+                  resizing ? { height: contentHeight } : null,
+                  {
+                    opacity: contentOpacity,
+                    transform: [
+                      { translateY: contentTranslateY },
+                      { scale: contentScale },
+                    ],
+                  },
+                ]}
+              >
+                <View onLayout={handleContentLayout} style={styles.contentInner}>
+                  <ModalKeyboardContext.Provider value={keyboardContextValue}>
+                    {children}
+                  </ModalKeyboardContext.Provider>
+                </View>
+              </Animated.View>
+            </ScrollView>
+          </KeyboardAvoidingView>
+        )}
       </View>
     </RNModal>
   );
@@ -1076,6 +1242,63 @@ const styles = StyleSheet.create({
     left: -DefaultTheme.spacing.lg,
     right: -DefaultTheme.spacing.lg,
     bottom: -DefaultTheme.spacing.lg,
+  },
+  sheetAvoider: {
+    flex: 1,
+    justifyContent: "flex-end",
+    minHeight: 0,
+  },
+  sheetShell: {
+    width: "100%",
+    flexShrink: 1,
+    minHeight: 0,
+    maxHeight: "100%",
+    overflow: "hidden",
+    backgroundColor: DefaultTheme.colors.white,
+    shadowColor: "#000000",
+    shadowOpacity: 0.28,
+    shadowRadius: 30,
+    shadowOffset: { width: 0, height: -8 },
+    elevation: 12,
+  },
+  sheetShellOverride: {
+    maxWidth: "100%",
+    marginHorizontal: 0,
+    borderRadius: 0,
+    borderTopLeftRadius: DefaultTheme.radius.lg,
+    borderTopRightRadius: DefaultTheme.radius.lg,
+  },
+  sheetScroll: {
+    flexGrow: 0,
+    flexShrink: 1,
+    minHeight: 0,
+  },
+  sheetHandleArea: {
+    alignItems: "center",
+  },
+  sheetHandleFloating: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    zIndex: 5,
+    elevation: 5,
+  },
+  sheetHandleGrip: {
+    paddingHorizontal: 28,
+    paddingTop: 10,
+    paddingBottom: 10,
+    alignItems: "center",
+  },
+  sheetHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: DefaultTheme.colors.line,
+  },
+  sheetHandleOnColor: {
+    backgroundColor: "rgba(255, 255, 255, 0.6)",
   },
   contentShell: {
     width: "100%",

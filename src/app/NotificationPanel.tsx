@@ -1,7 +1,6 @@
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Animated,
   Easing,
   Platform,
@@ -15,6 +14,7 @@ import {
   type LayoutChangeEvent,
 } from 'react-native';
 
+import { SkeletonList } from '@/components/common/SkeletonLoader';
 import { AppIcon } from '@/components/ui/AppIcon';
 import { GlassMaterial } from '@/components/ui/GlassPanel';
 import { DefaultTheme } from '@/constants/defaultTheme';
@@ -319,9 +319,7 @@ export function NotificationPanel({ visible, onClose, anchor }: NotificationPane
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}>
           {loading && notifications.length === 0 ? (
-            <View style={styles.stateBlock}>
-              <ActivityIndicator color={DefaultTheme.colors.primary} />
-            </View>
+            <SkeletonList rows={4} label="Loading notifications" />
           ) : error ? (
             <View style={styles.stateBlock}>
               <Text style={styles.errorText}>{error}</Text>

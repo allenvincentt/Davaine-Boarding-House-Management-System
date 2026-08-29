@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Pressable,
   StyleSheet,
   Text,
@@ -11,6 +10,9 @@ import {
   type ViewStyle,
 } from 'react-native';
 
+import { PageMeta } from '@/components/common/PageMeta';
+import { SkeletonKPIRow, SkeletonTable } from '@/components/common/SkeletonLoader';
+import { useSnackbar } from '@/components/common/Snackbar';
 import { BillReceiptModal, billStatusTone } from '@/app/admin-pages/BillReceiptModal';
 import { GenerateBillsModal } from '@/app/admin-pages/GenerateBillsModal';
 import { RecordPaymentModal } from '@/app/admin-pages/RecordPaymentModal';
@@ -94,9 +96,7 @@ export default function BillsPage() {
   const [periods, setPeriods] = useState<BillingPeriodModel[]>([]);
   const [activePeriodId, setActivePeriodId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
+  const snackbar = useSnackbar();
 
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('All');
@@ -120,6 +120,7 @@ export default function BillsPage() {
   const [pendingDelete, setPendingDelete] = useState<BillingPeriodModel | null>(null);
 
   const activeRef = useRef(true);
+  const loadRef = useRef<() => void>(() => undefined);
 
   useEffect(() => {
     activeRef.current = true;
@@ -130,7 +131,6 @@ export default function BillsPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    setLoadError(null);
     try {
       const [roomRows, periodRows] = await Promise.all([listRooms(), listBillingPeriods()]);
       if (!activeRef.current) {
@@ -145,16 +145,20 @@ export default function BillsPage() {
       );
     } catch (error) {
       if (activeRef.current) {
-        setLoadError(error instanceof Error ? error.message : 'Unable to load bills.');
+        snackbar.error(error instanceof Error ? error.message : 'Unable to load bills.', {
+          actionLabel: 'Retry',
+          onAction: () => loadRef.current(),
+        });
       }
     } finally {
       if (activeRef.current) {
         setLoading(false);
       }
     }
-  }, []);
+  }, [snackbar]);
 
   useEffect(() => {
+    loadRef.current = load;
     load();
   }, [load]);
 
@@ -208,8 +212,6 @@ export default function BillsPage() {
 
   const openGenerate = useCallback(
     (seed?: { year: number; month: number }) => {
-      setNotice(null);
-      setActionError(null);
       setGenerateSeed(seed ?? suggestNextPeriod(periods));
       setGenerateSession((current) => current + 1);
       setGenerateOpen(true);
@@ -218,8 +220,6 @@ export default function BillsPage() {
   );
 
   const openPayment = useCallback((bill: RoomBillModel | null) => {
-    setNotice(null);
-    setActionError(null);
     setPaymentBill(bill);
     setPaymentSession((current) => current + 1);
     setPaymentOpen(true);
@@ -241,13 +241,13 @@ export default function BillsPage() {
       const period = await generateBills(input);
       applyPeriod(period);
       const summary = computeBreakdown(period);
-      setNotice(
+      snackbar.success(
         `${periodLabelOf(period)} bills were generated. ${summary.billedRooms} room(s) billed for a total of ${formatPeso(
           summary.totalMonthlyBills,
         )}.`,
       );
     },
-    [applyPeriod],
+    [applyPeriod, snackbar],
   );
 
   const handleRecordPayment = useCallback(
@@ -261,31 +261,39 @@ export default function BillsPage() {
       setReceiptBill((current) =>
         current && updated && current.roomId === updated.roomId ? updated : current,
       );
-      setNotice(
+      snackbar.success(
         `${formatPeso(draft.amount)} was recorded for ${updated?.label ?? 'the room'}. Remaining balance: ${formatPeso(
           updated?.balance ?? 0,
         )}.`,
       );
     },
-    [activePeriod, applyPeriod],
+    [activePeriod, applyPeriod, snackbar],
   );
 
-  const handleDeletePeriod = useCallback(async (period: BillingPeriodModel) => {
-    setActionError(null);
-    try {
-      await deleteBillingPeriod(period.id);
-      setPeriods((current) => {
-        const next = current.filter((item) => item.id !== period.id);
-        setActivePeriodId(next[0]?.id ?? null);
-        return next;
-      });
-      setNotice(`${periodLabelOf(period)} bills were deleted.`);
-    } catch (error) {
-      setActionError(
-        error instanceof Error ? error.message : 'The billing period could not be deleted.',
-      );
-    }
-  }, []);
+  const handleDeletePeriod = useCallback(
+    async (period: BillingPeriodModel) => {
+      const pending = snackbar.loading(`Deleting ${periodLabelOf(period)} bills…`);
+      try {
+        await deleteBillingPeriod(period.id);
+        setPeriods((current) => {
+          const next = current.filter((item) => item.id !== period.id);
+          setActivePeriodId(next[0]?.id ?? null);
+          return next;
+        });
+        snackbar.update(pending, {
+          tone: 'success',
+          message: `${periodLabelOf(period)} bills were deleted.`,
+        });
+      } catch (error) {
+        snackbar.update(pending, {
+          tone: 'error',
+          message:
+            error instanceof Error ? error.message : 'The billing period could not be deleted.',
+        });
+      }
+    },
+    [snackbar],
+  );
 
   const periodOptions = useMemo<SelectOption[]>(
     () =>
@@ -516,6 +524,7 @@ export default function BillsPage() {
 
   return (
     <View style={styles.page}>
+      <PageMeta title="Bills" description="Generate, track, and settle monthly boarding house bills." />
       <MainContentArea {...scrollNavigator.scrollProps}>
         <View style={styles.headerRow}>
           <View style={styles.headerText}>
@@ -537,88 +546,80 @@ export default function BillsPage() {
           )}
         </View>
 
-        <KPICardsRow>
-          <KPICard
-            label="Total Consumption"
-            value={Math.round(breakdown?.totalConsumption ?? 0)}
-            icon="electricity"
-            iconColor={ELECTRIC_COLOR}
-            iconBackground={DefaultTheme.colors.softGold}
-            accentColor={ELECTRIC_COLOR}
-            caption="kWh for the whole BH"
-            progress={1}
-          />
-          <KPICard
-            label="Total Electric Bills"
-            value={breakdown?.totalElectric ?? 0}
-            icon="money"
-            iconColor={DefaultTheme.colors.primary}
-            iconBackground={DefaultTheme.colors.softOlive}
-            accentColor={DefaultTheme.colors.primary}
-            caption={`at ${formatPesoDecimal(activePeriod?.electricRate ?? 0)} per kWh`}
-            progress={1}
-          />
-          <KPICard
-            label="Total Water Bills"
-            value={breakdown?.totalWater ?? 0}
-            icon="water"
-            iconColor={WATER_COLOR}
-            iconBackground={DefaultTheme.colors.softBlue}
-            accentColor={WATER_COLOR}
-            caption={`${breakdown?.rates.totalHeads ?? 0} head(s) in the BH`}
-            progress={1}
-          />
-          <KPICard
-            label="Total Monthly Bills"
-            value={breakdown?.totalMonthlyBills ?? 0}
-            icon="payment"
-            iconColor="#7C5CD6"
-            iconBackground="#EDE7F6"
-            accentColor="#7C5CD6"
-            caption={`Across ${breakdown?.billedRooms ?? 0} billed room(s)`}
-            progress={1}
-          />
-          <KPICard
-            label="Collected"
-            value={breakdown?.totalCollected ?? 0}
-            icon="check"
-            iconColor={COLLECTED_COLOR}
-            iconBackground="#E4F5EA"
-            accentColor={COLLECTED_COLOR}
-            caption={`${breakdown?.paidRooms ?? 0} room(s) fully paid`}
-            progress={
-              breakdown && breakdown.totalDue > 0
-                ? breakdown.totalCollected / breakdown.totalDue
-                : 0
-            }
-          />
-          <KPICard
-            label="Outstanding"
-            value={breakdown?.totalBalance ?? 0}
-            icon="warning"
-            iconColor={BALANCE_COLOR}
-            iconBackground="#FBE7E5"
-            accentColor={BALANCE_COLOR}
-            caption={`${breakdown?.unpaidRooms ?? 0} room(s) still due`}
-            progress={
-              breakdown && breakdown.totalDue > 0 ? breakdown.totalBalance / breakdown.totalDue : 0
-            }
-          />
-        </KPICardsRow>
+        {loading && periods.length === 0 ? (
+          <SkeletonKPIRow count={6} label="Loading billing figures" />
+        ) : (
+          <KPICardsRow>
+            <KPICard
+              label="Total Consumption"
+              value={Math.round(breakdown?.totalConsumption ?? 0)}
+              icon="electricity"
+              iconColor={ELECTRIC_COLOR}
+              iconBackground={DefaultTheme.colors.softGold}
+              accentColor={ELECTRIC_COLOR}
+              caption="kWh for the whole BH"
+              progress={1}
+            />
+            <KPICard
+              label="Total Electric Bills"
+              value={breakdown?.totalElectric ?? 0}
+              icon="money"
+              iconColor={DefaultTheme.colors.primary}
+              iconBackground={DefaultTheme.colors.softOlive}
+              accentColor={DefaultTheme.colors.primary}
+              caption={`at ${formatPesoDecimal(activePeriod?.electricRate ?? 0)} per kWh`}
+              progress={1}
+            />
+            <KPICard
+              label="Total Water Bills"
+              value={breakdown?.totalWater ?? 0}
+              icon="water"
+              iconColor={WATER_COLOR}
+              iconBackground={DefaultTheme.colors.softBlue}
+              accentColor={WATER_COLOR}
+              caption={`${breakdown?.rates.totalHeads ?? 0} head(s) in the BH`}
+              progress={1}
+            />
+            <KPICard
+              label="Total Monthly Bills"
+              value={breakdown?.totalMonthlyBills ?? 0}
+              icon="payment"
+              iconColor="#7C5CD6"
+              iconBackground="#EDE7F6"
+              accentColor="#7C5CD6"
+              caption={`Across ${breakdown?.billedRooms ?? 0} billed room(s)`}
+              progress={1}
+            />
+            <KPICard
+              label="Collected"
+              value={breakdown?.totalCollected ?? 0}
+              icon="check"
+              iconColor={COLLECTED_COLOR}
+              iconBackground="#E4F5EA"
+              accentColor={COLLECTED_COLOR}
+              caption={`${breakdown?.paidRooms ?? 0} room(s) fully paid`}
+              progress={
+                breakdown && breakdown.totalDue > 0
+                  ? breakdown.totalCollected / breakdown.totalDue
+                  : 0
+              }
+            />
+            <KPICard
+              label="Outstanding"
+              value={breakdown?.totalBalance ?? 0}
+              icon="warning"
+              iconColor={BALANCE_COLOR}
+              iconBackground="#FBE7E5"
+              accentColor={BALANCE_COLOR}
+              caption={`${breakdown?.unpaidRooms ?? 0} room(s) still due`}
+              progress={
+                breakdown && breakdown.totalDue > 0 ? breakdown.totalBalance / breakdown.totalDue : 0
+              }
+            />
+          </KPICardsRow>
+        )}
 
         <Card style={styles.card} revealDelay={280}>
-          {(notice || actionError || loadError) && (
-            <Banner
-              tone={actionError || loadError ? 'error' : 'success'}
-              message={actionError ?? loadError ?? notice ?? ''}
-              onDismiss={() => {
-                setNotice(null);
-                setActionError(null);
-                setLoadError(null);
-              }}
-            />
-          )}
-
           <View style={styles.periodBar}>
             <View style={styles.periodBarText}>
               <Text style={styles.periodLabel}>
@@ -740,10 +741,7 @@ export default function BillsPage() {
 
           <View onLayout={handleTableLayout}>
             {loading && periods.length === 0 ? (
-              <View style={styles.loadingBlock}>
-                <ActivityIndicator color={DefaultTheme.colors.primary} />
-                <Text style={styles.loadingText}>Loading bills…</Text>
-              </View>
+              <SkeletonTable rows={6} columns={columns.length} label="Loading bills" />
             ) : !activePeriod ? (
               <View style={styles.emptyBlock}>
                 <AppIcon name="inbox" size={22} tintColor={DefaultTheme.colors.muted} />
@@ -954,36 +952,6 @@ function StatusChip({ status }: { status: BillStatus }) {
       <Text style={[styles.statusChipText, { color: tone.color }]} numberOfLines={1}>
         {status}
       </Text>
-    </View>
-  );
-}
-
-function Banner({
-  tone,
-  message,
-  onDismiss,
-}: {
-  tone: 'success' | 'error';
-  message: string;
-  onDismiss: () => void;
-}) {
-  const error = tone === 'error';
-
-  return (
-    <View style={[styles.banner, error ? styles.bannerError : styles.bannerSuccess]}>
-      <AppIcon
-        name={error ? 'warning' : 'check'}
-        size={15}
-        tintColor={error ? '#C4453B' : DefaultTheme.colors.primary}
-      />
-      <Text style={[styles.bannerText, error && styles.bannerTextError]}>{message}</Text>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Dismiss message"
-        hitSlop={8}
-        onPress={onDismiss}>
-        <AppIcon name="close" size={13} tintColor={DefaultTheme.colors.muted} />
-      </Pressable>
     </View>
   );
 }
@@ -1274,34 +1242,6 @@ const styles = StyleSheet.create({
   card: {
     width: '100%',
   },
-  banner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: DefaultTheme.radius.sm,
-    borderWidth: 1,
-  },
-  bannerSuccess: {
-    backgroundColor: DefaultTheme.colors.softOlive,
-    borderColor: 'rgba(138, 153, 0, 0.28)',
-  },
-  bannerError: {
-    backgroundColor: '#FBE7E5',
-    borderColor: 'rgba(196, 69, 59, 0.28)',
-  },
-  bannerText: {
-    flex: 1,
-    color: DefaultTheme.colors.ink,
-    fontFamily: DefaultTheme.fonts.bodyMedium,
-    fontSize: 12.5,
-    lineHeight: 18,
-  },
-  bannerTextError: {
-    color: '#8C2F27',
-  },
   periodBar: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1452,16 +1392,6 @@ const styles = StyleSheet.create({
     color: DefaultTheme.colors.ink,
     fontFamily: DefaultTheme.fonts.bodySemiBold,
     fontSize: 13.5,
-  },
-  loadingBlock: {
-    paddingVertical: 34,
-    alignItems: 'center',
-    gap: 10,
-  },
-  loadingText: {
-    color: DefaultTheme.colors.muted,
-    fontFamily: DefaultTheme.fonts.bodyMedium,
-    fontSize: 13,
   },
   emptyBlock: {
     alignItems: 'center',

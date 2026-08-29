@@ -82,6 +82,8 @@ export const appIcons = {
   link: { ios: 'link', android: 'link', web: 'link' },
   calendar: { ios: 'calendar', android: 'calendar_month', web: 'calendar_month' },
   doorOpen: { ios: 'door.left.hand.open', android: 'meeting_room', web: 'meeting_room' },
+  wifiOff: { ios: 'wifi.slash', android: 'wifi_off', web: 'wifi_off' },
+  cloudOff: { ios: 'icloud.slash.fill', android: 'cloud_off', web: 'cloud_off' },
 } satisfies Record<string, PlatformIcon>;
 
 export type AppIconName = keyof typeof appIcons;

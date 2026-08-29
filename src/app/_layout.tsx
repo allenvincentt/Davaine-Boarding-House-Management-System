@@ -12,6 +12,8 @@ import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { ConnectionSnackbar } from '@/app/ConnectionSnackbar';
+import { SnackbarProvider } from '@/components/common/Snackbar';
 import { BlurTargetProvider } from '@/components/ui/modals/BlurTargetProvider';
 import { FontFamily } from '@/constants/defaultTheme';
 import { AuthProvider } from '@/providers/AuthProvider';
@@ -31,9 +33,12 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <AuthProvider>
         <NotificationProvider>
-          <BlurTargetProvider>
-            <Stack screenOptions={{ headerShown: false }} />
-          </BlurTargetProvider>
+          <SnackbarProvider>
+            <BlurTargetProvider>
+              <Stack screenOptions={{ headerShown: false }} />
+            </BlurTargetProvider>
+            <ConnectionSnackbar />
+          </SnackbarProvider>
         </NotificationProvider>
       </AuthProvider>
     </SafeAreaProvider>

@@ -6,6 +6,7 @@ import {
   useWindowDimensions,
   type ScrollViewProps,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { usePageRefresh } from '@/components/layout/PageRefreshContext';
 import { DefaultTheme } from '@/constants/defaultTheme';
@@ -28,14 +29,21 @@ export function MainContentArea({
   onContentSizeChange,
 }: MainContentAreaProps) {
   const { width } = useWindowDimensions();
+  const { top: safeAreaTop } = useSafeAreaInsets();
   const compact = width < DefaultTheme.layout.compactNavigation;
   const { enabled, refreshing, onRefresh } = usePageRefresh();
+
+  const topBarInset = compact ? safeAreaTop + 12 + 66 + 16 : 14 + 68 + 16;
 
   return (
     <ScrollView
       ref={scrollRef}
       style={styles.scroll}
-      contentContainerStyle={[styles.scrollContent, compact && styles.scrollContentMobile]}
+      contentContainerStyle={[
+        styles.scrollContent,
+        { paddingTop: topBarInset },
+        compact && styles.scrollContentMobile,
+      ]}
       showsVerticalScrollIndicator={false}
       scrollEventThrottle={scrollEventThrottle}
       onScroll={onScroll}
